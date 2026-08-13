@@ -1,0 +1,77 @@
+# Visual Studio / Rider / VS Code
+.vs/
+.idea/
+.vscode/
+
+# Build output
+[Bb]in/
+[Oo]bj/
+
+# Visual Studio user-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Visual Studio cache
+.vsconfig
+
+# .NET generated files
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# MAUI build artifacts
+*.apk
+*.aab
+*.ipa
+*.app
+*.dmg
+*.msix
+*.msixbundle
+*.appx
+*.appxbundle
+
+# Android generated files
+*.keystore
+*.jks
+
+# macOS generated files
+*.xcarchive
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+# Local secrets / environment files
+.env
+.env.*
+!.env.example
+
+# User-specific configuration
+appsettings.Local.json
+appsettings.Development.json
+
+# Test results
+TestResults/
+*.trx
+
+# NuGet
+*.nupkg
+*.snupkg
+
+# Local databases
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3

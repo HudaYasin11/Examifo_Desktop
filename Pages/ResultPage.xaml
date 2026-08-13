@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-8" ?>
+
+<ContentPage
+    x:Class="Examifo_Desktop.Pages.ResultPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    Title="Result"
+    BackgroundColor="#F6F8FB">
+
+    <ScrollView>
+
+        <VerticalStackLayout
+            Padding="40"
+            Spacing="20"
+            VerticalOptions="Center"
+            HorizontalOptions="Center"
+            MaximumWidthRequest="700">
+
+            <Label
+                Text="Exam Result"
+                FontSize="32"
+                FontAttributes="Bold"
+                TextColor="#111827"
+                HorizontalOptions="Center" />
+
+            <Label
+                Text="Your examination has been evaluated."
+                FontSize="15"
+                TextColor="#64748B"
+                HorizontalTextAlignment="Center" />
+
+            <Frame
+                BackgroundColor="White"
+                BorderColor="#E5E7EB"
+                CornerRadius="16"
+                Padding="30"
+                HasShadow="True">
+
+                <VerticalStackLayout Spacing="20">
+
+                    <Label
+                        x:Name="ExamTitleLabel"
+                        FontSize="24"
+                        FontAttributes="Bold"
+                        TextColor="#111827"
+                        HorizontalOptions="Center" />
+
+                    <BoxView
+                        HeightRequest="3"
+                        WidthRequest="50"
+                        BackgroundColor="#08A6B5"
+                        HorizontalOptions="Center" />
+
+                    <Grid
+                        ColumnDefinitions="*,*"
+                        ColumnSpacing="15">
+
+                        <Frame
+                            Grid.Column="0"
+                            BackgroundColor="#F8FAFC"
+                            BorderColor="#E2E8F0"
+                            CornerRadius="10"
+                            Padding="20"
+                            HasShadow="False">
+
+                            <VerticalStackLayout Spacing="5">
+
+                                <Label
+                                    Text="Score"
+                                    FontSize="13"
+                                    TextColor="#64748B"
+                                    HorizontalOptions="Center" />
+
+                                <Label
+                                    x:Name="ScoreLabel"
+                                    FontSize="28"
+                                    FontAttributes="Bold"
+                                    TextColor="#1479F5"
+                                    HorizontalOptions="Center" />
+
+                            </VerticalStackLayout>
+
+                        </Frame>
+
+                        <Frame
+                            Grid.Column="1"
+                            BackgroundColor="#F0FDFA"
+                            BorderColor="#99F6E4"
+                            CornerRadius="10"
+                            Padding="20"
+                            HasShadow="False">
+
+                            <VerticalStackLayout Spacing="5">
+
+                                <Label
+                                    Text="Percentage"
+                                    FontSize="13"
+                                    TextColor="#64748B"
+                                    HorizontalOptions="Center" />
+
+                                <Label
+                                    x:Name="PercentageLabel"
+                                    FontSize="28"
+                                    FontAttributes="Bold"
+                                    TextColor="#08A6B5"
+                                    HorizontalOptions="Center" />
+
+                            </VerticalStackLayout>
+
+                        </Frame>
+
+                    </Grid>
+
+                    <Label
+                        x:Name="ResultMessageLabel"
+                        FontSize="18"
+                        FontAttributes="Bold"
+                        TextColor="#111827"
+                        HorizontalOptions="Center" />
+
+                    <Button
+                        Text="Back to Exams"
+                        BackgroundColor="#1479F5"
+                        TextColor="White"
+                        FontAttributes="Bold"
+                        CornerRadius="8"
+                        HeightRequest="50"
+                        Clicked="BackToExamsButton_Clicked" />
+
+                </VerticalStackLayout>
+
+            </Frame>
+
+        </VerticalStackLayout>
+
+    </ScrollView>
+
+</ContentPage>

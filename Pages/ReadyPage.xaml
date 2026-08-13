@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8" ?>
+
+<ContentPage
+    x:Class="Examifo_Desktop.Pages.ReadyPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    Title="Ready"
+    BackgroundColor="#F6F8FB">
+
+    <ScrollView>
+
+        <VerticalStackLayout
+            Padding="40"
+            Spacing="20"
+            MaximumWidthRequest="700"
+            HorizontalOptions="Center"
+            VerticalOptions="Center">
+
+            <Label
+                Text="Ready to Start?"
+                FontSize="32"
+                FontAttributes="Bold"
+                TextColor="#111827"
+                HorizontalOptions="Center" />
+
+            <Label
+                Text="Please review the information below before beginning your examination."
+                FontSize="15"
+                TextColor="#64748B"
+                HorizontalTextAlignment="Center" />
+
+            <Frame
+                BackgroundColor="White"
+                BorderColor="#E5E7EB"
+                CornerRadius="16"
+                Padding="30"
+                HasShadow="True">
+
+                <VerticalStackLayout Spacing="18">
+
+                    <Label
+                        x:Name="ExamTitleLabel"
+                        FontSize="24"
+                        FontAttributes="Bold"
+                        TextColor="#111827"
+                        HorizontalOptions="Center" />
+
+                    <BoxView
+                        HeightRequest="3"
+                        WidthRequest="50"
+                        BackgroundColor="#08A6B5"
+                        HorizontalOptions="Center" />
+
+                    <Label
+                        x:Name="InstructionsLabel"
+                        FontSize="14"
+                        TextColor="#64748B"
+                        HorizontalTextAlignment="Center" />
+
+                    <Frame
+                        BackgroundColor="#F0FDFA"
+                        BorderColor="#99F6E4"
+                        CornerRadius="10"
+                        Padding="15"
+                        HasShadow="False">
+
+                        <Label
+                            Text="Once you start the exam, the timer will begin. Make sure you are ready before continuing."
+                            FontSize="13"
+                            TextColor="#0F766E"
+                            HorizontalTextAlignment="Center" />
+
+                    </Frame>
+
+                    <Button
+                        Text="Start Exam"
+                        BackgroundColor="#1479F5"
+                        TextColor="White"
+                        FontAttributes="Bold"
+                        CornerRadius="8"
+                        HeightRequest="50"
+                        Clicked="StartExamButton_Clicked" />
+
+                </VerticalStackLayout>
+
+            </Frame>
+
+        </VerticalStackLayout>
+
+    </ScrollView>
+
+</ContentPage>

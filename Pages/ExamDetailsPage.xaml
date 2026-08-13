@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="utf-8" ?>
+
+<ContentPage
+    x:Class="Examifo_Desktop.Pages.ExamDetailsPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    Title="Exam Details"
+    BackgroundColor="#F6F8FB">
+
+    <ScrollView>
+
+        <VerticalStackLayout
+            Padding="35"
+            Spacing="20"
+            MaximumWidthRequest="850"
+            HorizontalOptions="Center">
+
+            <Label
+                Text="Exam Details"
+                FontSize="30"
+                FontAttributes="Bold"
+                TextColor="#111827" />
+
+            <Label
+                Text="Review the examination before starting."
+                FontSize="15"
+                TextColor="#64748B" />
+
+            <Frame
+                BackgroundColor="White"
+                BorderColor="#E5E7EB"
+                CornerRadius="16"
+                Padding="28"
+                HasShadow="True">
+
+                <VerticalStackLayout Spacing="18">
+
+                    <Label
+                        x:Name="TitleLabel"
+                        FontSize="26"
+                        FontAttributes="Bold"
+                        TextColor="#111827" />
+
+                    <Label
+                        x:Name="DescriptionLabel"
+                        FontSize="15"
+                        TextColor="#64748B" />
+
+                    <Grid
+                        ColumnDefinitions="*,*"
+                        RowDefinitions="Auto,Auto"
+                        ColumnSpacing="15"
+                        RowSpacing="12">
+
+                        <Frame
+                            Grid.Row="0"
+                            Grid.Column="0"
+                            BackgroundColor="#F8FAFC"
+                            BorderColor="#E2E8F0"
+                            CornerRadius="10"
+                            Padding="15"
+                            HasShadow="False">
+
+                            <VerticalStackLayout>
+                                <Label
+                                    Text="Duration"
+                                    FontSize="12"
+                                    TextColor="#64748B" />
+
+                                <Label
+                                    x:Name="DurationLabel"
+                                    FontSize="18"
+                                    FontAttributes="Bold"
+                                    TextColor="#111827" />
+                            </VerticalStackLayout>
+
+                        </Frame>
+
+                        <Frame
+                            Grid.Row="0"
+                            Grid.Column="1"
+                            BackgroundColor="#F8FAFC"
+                            BorderColor="#E2E8F0"
+                            CornerRadius="10"
+                            Padding="15"
+                            HasShadow="False">
+
+                            <VerticalStackLayout>
+                                <Label
+                                    Text="Questions"
+                                    FontSize="12"
+                                    TextColor="#64748B" />
+
+                                <Label
+                                    x:Name="QuestionsLabel"
+                                    FontSize="18"
+                                    FontAttributes="Bold"
+                                    TextColor="#111827" />
+                            </VerticalStackLayout>
+
+                        </Frame>
+
+                        <Frame
+                            Grid.Row="1"
+                            Grid.Column="0"
+                            BackgroundColor="#F8FAFC"
+                            BorderColor="#E2E8F0"
+                            CornerRadius="10"
+                            Padding="15"
+                            HasShadow="False">
+
+                            <VerticalStackLayout>
+                                <Label
+                                    Text="Maximum Attempts"
+                                    FontSize="12"
+                                    TextColor="#64748B" />
+
+                                <Label
+                                    x:Name="AttemptsLabel"
+                                    FontSize="18"
+                                    FontAttributes="Bold"
+                                    TextColor="#111827" />
+                            </VerticalStackLayout>
+
+                        </Frame>
+
+                        <Frame
+                            Grid.Row="1"
+                            Grid.Column="1"
+                            BackgroundColor="#E0F2FE"
+                            BorderColor="#BAE6FD"
+                            CornerRadius="10"
+                            Padding="15"
+                            HasShadow="False">
+
+                            <VerticalStackLayout>
+                                <Label
+                                    Text="Proctoring"
+                                    FontSize="12"
+                                    TextColor="#64748B" />
+
+                                <Label
+                                    x:Name="ProctoringLabel"
+                                    FontSize="18"
+                                    FontAttributes="Bold"
+                                    TextColor="#1479F5" />
+                            </VerticalStackLayout>
+
+                        </Frame>
+
+                    </Grid>
+
+                    <Frame
+                        BackgroundColor="#F0FDFA"
+                        BorderColor="#99F6E4"
+                        CornerRadius="10"
+                        Padding="15"
+                        HasShadow="False">
+
+                        <Label
+                            Text="Make sure you are ready before starting. Once the attempt begins, the timer will run continuously."
+                            FontSize="13"
+                            TextColor="#0F766E" />
+
+                    </Frame>
+
+                    <Button
+                        Text="Continue"
+                        BackgroundColor="#1479F5"
+                        TextColor="White"
+                        FontAttributes="Bold"
+                        CornerRadius="8"
+                        HeightRequest="50"
+                        Clicked="ContinueButton_Clicked" />
+
+                </VerticalStackLayout>
+
+            </Frame>
+
+        </VerticalStackLayout>
+
+    </ScrollView>
+
+</ContentPage>

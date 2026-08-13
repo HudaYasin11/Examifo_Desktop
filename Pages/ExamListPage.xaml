@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8" ?>
+
+<ContentPage
+    x:Class="Examifo_Desktop.Pages.ExamListPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    Title="Available Exams"
+    BackgroundColor="#F6F8FB">
+
+    <Grid RowDefinitions="100,*">
+
+        <Grid Grid.Row="0"
+              Padding="30,0">
+
+            <Grid.Background>
+                <LinearGradientBrush StartPoint="0,0"
+                                     EndPoint="1,0">
+
+                    <GradientStop
+                        Color="#202A72"
+                        Offset="0" />
+
+                    <GradientStop
+                        Color="#4B3FE4"
+                        Offset="1" />
+
+                </LinearGradientBrush>
+            </Grid.Background>
+
+            <VerticalStackLayout
+                VerticalOptions="Center"
+                Spacing="2">
+
+                <Label
+                    Text="Examifo"
+                    FontSize="25"
+                    FontAttributes="Bold"
+                    TextColor="White" />
+
+                <Label
+                    Text="Available examinations"
+                    FontSize="13"
+                    TextColor="#DDE3FF" />
+
+            </VerticalStackLayout>
+
+        </Grid>
+
+        <VerticalStackLayout
+            Grid.Row="1"
+            Padding="30"
+            Spacing="15">
+
+            <Label
+                Text="Available Exams"
+                FontSize="28"
+                FontAttributes="Bold"
+                TextColor="#111827" />
+
+            <Label
+                Text="Select an examination to continue."
+                FontSize="14"
+                TextColor="#64748B" />
+
+            <CollectionView
+                x:Name="ExamCollectionView"
+                SelectionMode="Single"
+                Margin="0,10,0,0">
+
+                <CollectionView.ItemTemplate>
+
+                    <DataTemplate>
+
+                        <Frame
+                            BackgroundColor="White"
+                            BorderColor="#E5E7EB"
+                            CornerRadius="14"
+                            HasShadow="True"
+                            Padding="22"
+                            Margin="0,6">
+
+                            <Grid
+                                RowDefinitions="Auto,Auto,Auto"
+                                ColumnDefinitions="*,Auto"
+                                RowSpacing="10">
+
+                                <Label
+                                    Grid.Row="0"
+                                    Grid.Column="0"
+                                    Text="{Binding Title}"
+                                    FontSize="20"
+                                    FontAttributes="Bold"
+                                    TextColor="#111827" />
+
+                                <Frame
+                                    Grid.Row="0"
+                                    Grid.Column="1"
+                                    BackgroundColor="#E0F2FE"
+                                    BorderColor="#BAE6FD"
+                                    CornerRadius="12"
+                                    Padding="9,4"
+                                    HasShadow="False"
+                                    VerticalOptions="Start">
+
+                                    <Label
+                                        Text="AVAILABLE"
+                                        FontSize="10"
+                                        FontAttributes="Bold"
+                                        TextColor="#1479F5" />
+
+                                </Frame>
+
+                                <Label
+                                    Grid.Row="1"
+                                    Grid.ColumnSpan="2"
+                                    Text="{Binding Description}"
+                                    FontSize="14"
+                                    TextColor="#64748B" />
+
+                                <Label
+                                    Grid.Row="2"
+                                    Grid.ColumnSpan="2"
+                                    Text="{Binding DurationMinutes, StringFormat='Duration: {0} minutes'}"
+                                    FontSize="13"
+                                    TextColor="#08A6B5" />
+
+                            </Grid>
+
+                        </Frame>
+
+                    </DataTemplate>
+
+                </CollectionView.ItemTemplate>
+
+            </CollectionView>
+
+        </VerticalStackLayout>
+
+    </Grid>
+
+</ContentPage>

@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8" ?>
+
+<ContentPage
+    x:Class="Examifo_Desktop.Pages.SubmissionStatusPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    Title="Submission"
+    BackgroundColor="#F6F8FB">
+
+    <VerticalStackLayout
+        Padding="40"
+        Spacing="20"
+        VerticalOptions="Center"
+        HorizontalOptions="Center"
+        MaximumWidthRequest="600">
+
+        <Label
+            Text="Exam Submitted"
+            FontSize="32"
+            FontAttributes="Bold"
+            TextColor="#111827"
+            HorizontalOptions="Center" />
+
+        <Label
+            Text="Your examination has been submitted successfully."
+            FontSize="16"
+            TextColor="#64748B"
+            HorizontalTextAlignment="Center" />
+
+        <Frame
+            BackgroundColor="#F0FDFA"
+            BorderColor="#99F6E4"
+            CornerRadius="14"
+            Padding="25"
+            HasShadow="True">
+
+            <VerticalStackLayout Spacing="12">
+
+                <Label
+                    Text="Submission Status"
+                    FontSize="14"
+                    FontAttributes="Bold"
+                    TextColor="#0F766E"
+                    HorizontalOptions="Center" />
+
+                <Label
+                    Text="SUBMITTED"
+                    FontSize="24"
+                    FontAttributes="Bold"
+                    TextColor="#08A6B5"
+                    HorizontalOptions="Center" />
+
+            </VerticalStackLayout>
+
+        </Frame>
+
+        <Button
+            Text="View Result"
+            BackgroundColor="#1479F5"
+            TextColor="White"
+            FontAttributes="Bold"
+            CornerRadius="8"
+            HeightRequest="50"
+            Clicked="ViewResultButton_Clicked" />
+
+    </VerticalStackLayout>
+
+</ContentPage>

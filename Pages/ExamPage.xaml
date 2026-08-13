@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="utf-8" ?>
+
+<ContentPage
+    x:Class="Examifo_Desktop.Pages.ExamPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    Title="Exam"
+    BackgroundColor="#F6F8FB">
+
+    <Grid RowDefinitions="90,*">
+
+        <!-- EXAM HEADER -->
+
+        <Grid Grid.Row="0"
+              Padding="30,0">
+
+            <Grid.Background>
+                <LinearGradientBrush StartPoint="0,0"
+                                     EndPoint="1,0">
+
+                    <GradientStop
+                        Color="#202A72"
+                        Offset="0" />
+
+                    <GradientStop
+                        Color="#4B3FE4"
+                        Offset="1" />
+
+                </LinearGradientBrush>
+            </Grid.Background>
+
+            <Grid
+                ColumnDefinitions="*,Auto"
+                VerticalOptions="Center">
+
+                <!-- EXAM TITLE -->
+
+                <Label
+                    x:Name="ExamTitleLabel"
+                    Grid.Column="0"
+                    FontSize="20"
+                    FontAttributes="Bold"
+                    TextColor="White"
+                    VerticalOptions="Center" />
+
+                <!-- TIMER -->
+
+                <Frame
+                    Grid.Column="1"
+                    BackgroundColor="White"
+                    BorderColor="#E5E7EB"
+                    CornerRadius="8"
+                    Padding="12,6"
+                    HasShadow="False"
+                    VerticalOptions="Center">
+
+                    <Label
+                        x:Name="TimerLabel"
+                        Text="10:00"
+                        FontSize="15"
+                        FontAttributes="Bold"
+                        TextColor="#111827" />
+
+                </Frame>
+
+            </Grid>
+
+        </Grid>
+
+        <!-- QUESTION AREA -->
+
+        <ScrollView Grid.Row="1">
+
+            <VerticalStackLayout
+                Padding="30"
+                Spacing="20"
+                MaximumWidthRequest="800"
+                HorizontalOptions="Center">
+
+                <!-- QUESTION CARD -->
+
+                <Frame
+                    BackgroundColor="White"
+                    BorderColor="#E5E7EB"
+                    CornerRadius="14"
+                    HasShadow="True"
+                    Padding="25">
+
+                    <VerticalStackLayout Spacing="18">
+
+                        <!-- QUESTION HEADER -->
+
+                        <Grid
+                            ColumnDefinitions="*,Auto">
+
+                            <Label
+                                Text="Question"
+                                FontSize="14"
+                                FontAttributes="Bold"
+                                TextColor="#64748B" />
+
+                            <Frame
+                                Grid.Column="1"
+                                BackgroundColor="#E0F2FE"
+                                BorderColor="#BAE6FD"
+                                CornerRadius="8"
+                                Padding="9,4"
+                                HasShadow="False">
+
+                                <Label
+                                    Text="1 mark"
+                                    FontSize="10"
+                                    FontAttributes="Bold"
+                                    TextColor="#1479F5" />
+
+                            </Frame>
+
+                        </Grid>
+
+                        <!-- QUESTION -->
+
+                        <Label
+                            x:Name="QuestionLabel"
+                            FontSize="21"
+                            FontAttributes="Bold"
+                            TextColor="#111827" />
+
+                        <!-- ACCENT -->
+
+                        <BoxView
+                            HeightRequest="3"
+                            BackgroundColor="#08A6B5"
+                            HorizontalOptions="Start"
+                            WidthRequest="45" />
+
+                        <!-- OPTIONS -->
+
+                        <VerticalStackLayout
+                            x:Name="OptionsLayout"
+                            Spacing="10" />
+
+                    </VerticalStackLayout>
+
+                </Frame>
+
+                <!-- NEXT -->
+
+                <Button
+    x:Name="NextButton"
+    Text="Next"
+    TextColor="White"
+    BackgroundColor="#1479F5"
+    FontAttributes="Bold"
+    CornerRadius="8"
+    HeightRequest="48"
+    Clicked="NextButton_Clicked" />
+            </VerticalStackLayout>
+
+        </ScrollView>
+
+    </Grid>
+
+</ContentPage>

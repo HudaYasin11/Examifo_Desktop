@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="utf-8" ?>
+
+<ContentPage
+    x:Class="Examifo_Desktop.Pages.LoginPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    Title="Examifo Login"
+    BackgroundColor="#F6F8FB">
+
+    <Grid RowDefinitions="110,*">
+
+        <!-- TOP HEADER -->
+
+        <Grid Grid.Row="0"
+              Padding="35,0">
+
+            <Grid.Background>
+                <LinearGradientBrush StartPoint="0,0"
+                                     EndPoint="1,0">
+
+                    <GradientStop
+                        Color="#202A72"
+                        Offset="0" />
+
+                    <GradientStop
+                        Color="#4B3FE4"
+                        Offset="1" />
+
+                </LinearGradientBrush>
+            </Grid.Background>
+
+            <VerticalStackLayout
+                VerticalOptions="Center"
+                Spacing="2">
+
+                <Label
+                    Text="Examifo"
+                    FontSize="26"
+                    FontAttributes="Bold"
+                    TextColor="White" />
+
+                <Label
+                    Text="Desktop Examination Platform"
+                    FontSize="13"
+                    TextColor="#DDE3FF" />
+
+            </VerticalStackLayout>
+
+        </Grid>
+
+
+        <!-- LOGIN CONTENT -->
+
+        <ScrollView Grid.Row="1">
+
+            <VerticalStackLayout
+                Padding="30,55"
+                Spacing="20"
+                MaximumWidthRequest="480"
+                HorizontalOptions="Center">
+
+                <Label
+                    Text="Welcome back"
+                    FontSize="30"
+                    FontAttributes="Bold"
+                    TextColor="#111827"
+                    HorizontalOptions="Center" />
+
+                <Label
+                    Text="Sign in to continue to your examinations."
+                    FontSize="14"
+                    TextColor="#64748B"
+                    HorizontalOptions="Center"
+                    HorizontalTextAlignment="Center" />
+
+
+                <!-- WHITE LOGIN CARD -->
+
+                <Frame
+                    BackgroundColor="White"
+                    BorderColor="#E5E7EB"
+                    CornerRadius="14"
+                    HasShadow="True"
+                    Padding="30"
+                    Margin="0,10">
+
+                    <VerticalStackLayout Spacing="16">
+
+                        <Label
+                            Text="Email"
+                            FontSize="14"
+                            FontAttributes="Bold"
+                            TextColor="#111827" />
+
+                        <Entry
+                            x:Name="EmailEntry"
+                            Placeholder="Enter your email"
+                            PlaceholderColor="#94A3B8"
+                            TextColor="#111827"
+                            BackgroundColor="#F8FAFC"
+                            Keyboard="Email"
+                            HeightRequest="48" />
+
+
+                        <Label
+                            Text="Password"
+                            FontSize="14"
+                            FontAttributes="Bold"
+                            TextColor="#111827"
+                            Margin="0,5,0,0" />
+
+                        <Entry
+                            x:Name="PasswordEntry"
+                            Placeholder="Enter your password"
+                            PlaceholderColor="#94A3B8"
+                            TextColor="#111827"
+                            BackgroundColor="#F8FAFC"
+                            IsPassword="True"
+                            HeightRequest="48" />
+
+
+                        <Label
+                            x:Name="ErrorLabel"
+                            TextColor="#DC2626"
+                            FontSize="13"
+                            IsVisible="False" />
+
+
+                        <Button
+                            Text="Login"
+                            TextColor="White"
+                            BackgroundColor="#1479F5"
+                            FontAttributes="Bold"
+                            CornerRadius="8"
+                            HeightRequest="48"
+                            Margin="0,8,0,0"
+                            Clicked="LoginButton_Clicked" />
+
+                    </VerticalStackLayout>
+
+                </Frame>
+
+
+                <Label
+                    Text="Examifo Desktop • Secure examination environment"
+                    FontSize="12"
+                    TextColor="#94A3B8"
+                    HorizontalOptions="Center"
+                    HorizontalTextAlignment="Center" />
+
+            </VerticalStackLayout>
+
+        </ScrollView>
+
+    </Grid>
+
+</ContentPage>
