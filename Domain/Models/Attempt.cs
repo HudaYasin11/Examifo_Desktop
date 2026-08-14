@@ -1,9 +1,11 @@
-﻿using Examifo_Desktop.Domain.Enums;
+﻿using SQLite;
+using Examifo_Desktop.Domain.Enums;
 
 namespace Examifo_Desktop.Domain.Models;
 
 public class Attempt
 {
+    [PrimaryKey]
     public Guid Id { get; set; } = Guid.NewGuid();
 
     public Guid ExamId { get; set; }
@@ -16,5 +18,6 @@ public class Attempt
 
     public DateTime? SubmittedAtUtc { get; set; }
 
+    [Ignore]
     public List<Answer> Answers { get; set; } = new();
 }

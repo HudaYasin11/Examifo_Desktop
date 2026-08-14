@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8" ?>
+
+<ContentPage
+    x:Class="Examifo_Desktop.Pages.SQLiteTestPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    Title="SQLite Verification"
+    BackgroundColor="#F6F8FB">
+
+    <ScrollView>
+
+        <VerticalStackLayout
+            Padding="30"
+            Spacing="20">
+
+            <Label
+                Text="SQLite Database Verification"
+                FontSize="28"
+                FontAttributes="Bold"
+                TextColor="#111827" />
+
+            <Button
+                Text="Load Database"
+                Clicked="LoadDatabaseButton_Clicked"
+                BackgroundColor="#1479F5"
+                TextColor="White"
+                FontAttributes="Bold" />
+
+            <Label
+                Text="ATTEMPTS"
+                FontSize="18"
+                FontAttributes="Bold"
+                TextColor="#202A72" />
+
+            <Label
+                x:Name="AttemptsLabel"
+                Text="No data loaded."
+                TextColor="#111827" />
+
+            <Label
+                Text="ANSWERS"
+                FontSize="18"
+                FontAttributes="Bold"
+                TextColor="#202A72" />
+
+            <Label
+                x:Name="AnswersLabel"
+                Text="No data loaded."
+                TextColor="#111827" />
+
+            <Label
+                Text="SUBMISSIONS"
+                FontSize="18"
+                FontAttributes="Bold"
+                TextColor="#202A72" />
+
+            <Label
+                x:Name="SubmissionsLabel"
+                Text="No data loaded."
+                TextColor="#111827" />
+
+        </VerticalStackLayout>
+
+    </ScrollView>
+
+</ContentPage>

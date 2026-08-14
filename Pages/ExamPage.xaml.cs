@@ -1,10 +1,13 @@
 using Examifo_Desktop.Domain.Models;
+using Examifo_Desktop.Infrastructure.Persistence;
 
 namespace Examifo_Desktop.Pages;
 
 public partial class ExamPage : ContentPage
 {
     private readonly Exam _exam;
+    private readonly Attempt _attempt;
+    private readonly DatabaseService _databaseService;
 
     private int _currentQuestionIndex;
     private int _remainingSeconds;
@@ -13,11 +16,17 @@ public partial class ExamPage : ContentPage
 
     private readonly Dictionary<int, QuestionOption?> _selectedAnswers = new();
 
-    public ExamPage(Exam exam)
+    public ExamPage(
+        Exam exam,
+        Attempt attempt,
+        DatabaseService databaseService)
     {
         InitializeComponent();
 
         _exam = exam;
+        _attempt = attempt;
+        _databaseService = databaseService;
+
         _currentQuestionIndex = 0;
         _remainingSeconds = exam.DurationMinutes * 60;
 
@@ -33,9 +42,13 @@ public partial class ExamPage : ContentPage
         _timer.Interval = TimeSpan.FromSeconds(1);
         _timer.Tick += Timer_Tick;
         _timer.Start();
+
+        UpdateTimerLabel();
     }
 
-    private async void Timer_Tick(object? sender, EventArgs e)
+    private async void Timer_Tick(
+        object? sender,
+        EventArgs e)
     {
         if (_remainingSeconds <= 0)
         {
@@ -52,15 +65,22 @@ public partial class ExamPage : ContentPage
 
         _remainingSeconds--;
 
+        UpdateTimerLabel();
+    }
+
+    private void UpdateTimerLabel()
+    {
         int minutes = _remainingSeconds / 60;
         int seconds = _remainingSeconds % 60;
 
-        TimerLabel.Text = $"{minutes:00}:{seconds:00}";
+        TimerLabel.Text =
+            $"{minutes:00}:{seconds:00}";
     }
 
     private void ShowQuestion()
     {
-        if (_currentQuestionIndex >= _exam.Questions.Count)
+        if (_currentQuestionIndex >=
+            _exam.Questions.Count)
         {
             return;
         }
@@ -78,9 +98,12 @@ public partial class ExamPage : ContentPage
             Button optionButton = new Button
             {
                 Text = option.Text,
-                BackgroundColor = Color.FromArgb("#FFFFFF"),
-                TextColor = Color.FromArgb("#111827"),
-                BorderColor = Color.FromArgb("#E5E7EB"),
+                BackgroundColor =
+                    Color.FromArgb("#FFFFFF"),
+                TextColor =
+                    Color.FromArgb("#111827"),
+                BorderColor =
+                    Color.FromArgb("#E5E7EB"),
                 BorderWidth = 1,
                 CornerRadius = 8,
                 HeightRequest = 50
@@ -88,13 +111,15 @@ public partial class ExamPage : ContentPage
 
             optionButton.Clicked += (sender, e) =>
             {
-                SelectOption(option, optionButton);
+                SelectOption(
+                    question,
+                    option,
+                    optionButton);
             };
 
             OptionsLayout.Children.Add(optionButton);
         }
 
-        // Change Next → Submit on the final question
         if (_currentQuestionIndex ==
             _exam.Questions.Count - 1)
         {
@@ -104,35 +129,96 @@ public partial class ExamPage : ContentPage
         {
             NextButton.Text = "Next";
         }
+
+        LoadSavedAnswer(question);
     }
 
-    private void SelectOption(
+    private async void LoadSavedAnswer(
+        Question question)
+    {
+        Answer? savedAnswer =
+            await _databaseService.GetAnswerAsync(
+                _attempt.Id,
+                question.Id);
+
+        if (savedAnswer == null)
+        {
+            return;
+        }
+
+        QuestionOption? matchingOption =
+            question.Options.FirstOrDefault(
+                option =>
+                    option.Text == savedAnswer.Response);
+
+        if (matchingOption == null)
+        {
+            return;
+        }
+
+        _selectedAnswers[_currentQuestionIndex] =
+            matchingOption;
+
+        foreach (Button button in
+                 OptionsLayout.Children.OfType<Button>())
+        {
+            if (button.Text == matchingOption.Text)
+            {
+                SelectButtonAppearance(button);
+            }
+        }
+    }
+
+    private async void SelectOption(
+        Question question,
         QuestionOption selectedOption,
         Button selectedButton)
     {
         _selectedAnswers[_currentQuestionIndex] =
             selectedOption;
 
-        foreach (Button button in OptionsLayout.Children
-                     .OfType<Button>())
+        foreach (Button button in
+                 OptionsLayout.Children.OfType<Button>())
         {
-            button.BackgroundColor =
-                Color.FromArgb("#FFFFFF");
-
-            button.TextColor =
-                Color.FromArgb("#111827");
-
-            button.BorderColor =
-                Color.FromArgb("#E5E7EB");
+            ResetButtonAppearance(button);
         }
 
-        selectedButton.BackgroundColor =
+        SelectButtonAppearance(selectedButton);
+
+        var answer = new Answer
+        {
+            AttemptId = _attempt.Id,
+            QuestionId = question.Id,
+            Response = selectedOption.Text,
+            AnsweredAtUtc = DateTime.UtcNow
+        };
+
+        await _databaseService.SaveAnswerAsync(answer);
+    }
+
+    private void ResetButtonAppearance(
+        Button button)
+    {
+        button.BackgroundColor =
+            Color.FromArgb("#FFFFFF");
+
+        button.TextColor =
+            Color.FromArgb("#111827");
+
+        button.BorderColor =
+            Color.FromArgb("#E5E7EB");
+    }
+
+    private void SelectButtonAppearance(
+        Button button)
+    {
+        button.BackgroundColor =
             Color.FromArgb("#E0F2FE");
 
-        selectedButton.TextColor =
+        button.TextColor =
             Color.FromArgb("#1479F5");
 
-        selectedButton.BorderColor =
+        button.BorderColor =
             Color.FromArgb("#1479F5");
     }
 
@@ -140,7 +226,6 @@ public partial class ExamPage : ContentPage
         object sender,
         EventArgs e)
     {
-        // LAST QUESTION → SUBMIT
         if (_currentQuestionIndex ==
             _exam.Questions.Count - 1)
         {
@@ -148,7 +233,6 @@ public partial class ExamPage : ContentPage
             return;
         }
 
-        // OTHERWISE → NEXT QUESTION
         _currentQuestionIndex++;
 
         ShowQuestion();
@@ -162,7 +246,8 @@ public partial class ExamPage : ContentPage
 
         foreach (var answer in _selectedAnswers)
         {
-            QuestionOption? selectedOption = answer.Value;
+            QuestionOption? selectedOption =
+                answer.Value;
 
             if (selectedOption != null &&
                 selectedOption.IsCorrect)
@@ -171,12 +256,36 @@ public partial class ExamPage : ContentPage
             }
         }
 
-        int totalQuestions = _exam.Questions.Count;
+        int totalQuestions =
+            _exam.Questions.Count;
+
+        // Mark the attempt as locally submitted.
+        _attempt.Status =
+            Domain.Enums.AttemptStatus.SubmittedLocally;
+
+        _attempt.SubmittedAtUtc =
+            DateTime.UtcNow;
+
+        await _databaseService.UpdateAttemptAsync(
+            _attempt);
+
+        // Save the local submission.
+        var submission = new Submission
+        {
+            AttemptId = _attempt.Id,
+            CreatedAtUtc = DateTime.UtcNow,
+            Status = "Pending",
+            Score = score,
+            TotalQuestions = totalQuestions
+        };
+
+        await _databaseService.SaveSubmissionAsync(
+            submission);
 
         await Navigation.PushAsync(
-            new SubmissionStatusPage(
+            new SubmissionPage(
                 _exam,
-                score,
-                totalQuestions));
+                _attempt,
+                submission));
     }
 }

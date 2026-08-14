@@ -1,8 +1,13 @@
-﻿namespace Examifo_Desktop.Domain.Models;
+﻿using SQLite;
+
+namespace Examifo_Desktop.Domain.Models;
 
 public class Answer
 {
+    [PrimaryKey]
     public Guid Id { get; set; } = Guid.NewGuid();
+
+    public Guid AttemptId { get; set; }
 
     public Guid QuestionId { get; set; }
 

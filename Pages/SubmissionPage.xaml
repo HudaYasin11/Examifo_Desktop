@@ -1,12 +1,107 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             x:Class="Examifo_Desktop.Pages.SubmissionPage"
-             Title="SubmissionPage">
-    <VerticalStackLayout>
-        <Label 
-            Text="Welcome to .NET MAUI!"
-            VerticalOptions="Center" 
-            HorizontalOptions="Center" />
-    </VerticalStackLayout>
+
+<ContentPage
+    x:Class="Examifo_Desktop.Pages.SubmissionPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    Title="Submission"
+    BackgroundColor="#F6F8FB">
+
+    <ScrollView>
+
+        <VerticalStackLayout
+            Padding="40"
+            Spacing="20"
+            MaximumWidthRequest="650"
+            HorizontalOptions="Center"
+            VerticalOptions="Center">
+
+            <Frame
+                BackgroundColor="White"
+                BorderColor="#E5E7EB"
+                CornerRadius="14"
+                Padding="30"
+                HasShadow="True">
+
+                <VerticalStackLayout
+                    Spacing="18"
+                    HorizontalOptions="Center">
+
+                    <Label
+                        Text="Exam Submitted"
+                        FontSize="28"
+                        FontAttributes="Bold"
+                        TextColor="#111827"
+                        HorizontalTextAlignment="Center" />
+
+                    <Label
+                        x:Name="ExamTitleLabel"
+                        FontSize="18"
+                        TextColor="#64748B"
+                        HorizontalTextAlignment="Center" />
+
+                    <BoxView
+                        HeightRequest="3"
+                        WidthRequest="45"
+                        BackgroundColor="#08A6B5"
+                        HorizontalOptions="Center" />
+
+                    <Label
+                        Text="Score"
+                        FontSize="14"
+                        FontAttributes="Bold"
+                        TextColor="#64748B"
+                        HorizontalTextAlignment="Center" />
+
+                    <Label
+                        x:Name="ScoreLabel"
+                        FontSize="36"
+                        FontAttributes="Bold"
+                        TextColor="#1479F5"
+                        HorizontalTextAlignment="Center" />
+
+                    <Label
+                        Text="Submission Status"
+                        FontSize="14"
+                        FontAttributes="Bold"
+                        TextColor="#64748B"
+                        HorizontalTextAlignment="Center" />
+
+                    <Label
+                        x:Name="StatusLabel"
+                        FontSize="18"
+                        FontAttributes="Bold"
+                        TextColor="#111827"
+                        HorizontalTextAlignment="Center" />
+
+                    <Label
+                        Text="Submitted At"
+                        FontSize="14"
+                        FontAttributes="Bold"
+                        TextColor="#64748B"
+                        HorizontalTextAlignment="Center" />
+
+                    <Label
+                        x:Name="SubmittedAtLabel"
+                        FontSize="15"
+                        TextColor="#111827"
+                        HorizontalTextAlignment="Center" />
+
+                    <Button
+                        Text="Done"
+                        TextColor="White"
+                        BackgroundColor="#1479F5"
+                        FontAttributes="Bold"
+                        CornerRadius="8"
+                        HeightRequest="48"
+                        Clicked="DoneButton_Clicked" />
+
+                </VerticalStackLayout>
+
+            </Frame>
+
+        </VerticalStackLayout>
+
+    </ScrollView>
+
 </ContentPage>
