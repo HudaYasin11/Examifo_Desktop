@@ -190,6 +190,12 @@ public static async Task TestLogoutLifecycleAsync()
     identity.Exception = null;
     await new SessionLogoutService(identity, store, state).LogoutAsync(localOnly: true);
     Assert(await store.LoadAsync() is null, "explicit local-only logout clears local secrets without server call");
+
+    await store.SaveAsync(session);
+    int callsBeforeAlreadySignedOut = identity.LogoutCalls;
+    await new SessionLogoutService(identity, store, state).LogoutAsync();
+    Assert(await store.LoadAsync() is null && identity.LogoutCalls == callsBeforeAlreadySignedOut,
+        "logout from an already-signed-out state safely clears stale local secrets");
 }
 
 public static void TestTrustedServerTime()

@@ -9,6 +9,12 @@ public sealed class SessionLogoutService(
 {
     public async Task LogoutAsync(bool localOnly = false, CancellationToken cancellationToken = default)
     {
+        if (sessionState.Current.State == SessionState.SignedOut)
+        {
+            await sessionStore.ClearAsync(cancellationToken);
+            return;
+        }
+
         sessionState.BeginSignOut();
         try
         {

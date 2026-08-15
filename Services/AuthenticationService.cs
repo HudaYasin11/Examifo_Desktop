@@ -1,5 +1,6 @@
 using Examifo_Desktop.Infrastructure.Api.Clients;
 using Examifo_Desktop.Infrastructure.Api.DTOs;
+using Examifo_Desktop.Infrastructure.Persistence;
 
 namespace Examifo_Desktop.Services;
 
@@ -10,7 +11,8 @@ public sealed class AuthenticationService(
     TokenRefreshCoordinator tokenRefreshCoordinator,
     TrustedServerTimeService trustedTime,
     SessionStateService sessionState,
-    SessionLogoutService logoutService)
+    SessionLogoutService logoutService,
+    DatabaseService databaseService)
 {
     public async Task<LoginResult> LoginAsync(string email, string password, CancellationToken cancellationToken = default)
     {
@@ -22,9 +24,22 @@ public sealed class AuthenticationService(
         DateTimeOffset started = DateTimeOffset.UtcNow;
         try
         {
+            Guid installationId = installationIdentityService.GetOrCreateInstallationId();
             LoginResponse response = await authApiClient.LoginAsync(new LoginRequest(email, password,
-                new DeviceInput(installationIdentityService.GetOrCreateInstallationId(), DeviceInfo.Name, DeviceInfo.Platform.ToString(),
+                new DeviceInput(installationId, DeviceInfo.Name, DeviceInfo.Platform.ToString(),
                     AppInfo.Current.VersionString, null)), cancellationToken);
+            await databaseService.SaveLocalUserAsync(response.User.Id, response.User.Name,
+                response.User.Email, DateTime.UtcNow, cancellationToken);
+            await databaseService.SaveLocalDeviceAsync(new LocalDeviceRecord
+            {
+                DeviceId = response.DeviceId,
+                InstallationId = installationId,
+                EncryptedName = DeviceInfo.Name,
+                Platform = DeviceInfo.Platform.ToString(),
+                AppVersion = AppInfo.Current.VersionString,
+                Status = "Active",
+                UpdatedAtUtc = DateTime.UtcNow
+            }, cancellationToken);
             await sessionStore.SaveAsync(AuthSession.FromLoginResponse(response), cancellationToken);
             trustedTime.RecordSample(response.ServerTimeUtc, started, DateTimeOffset.UtcNow);
             sessionState.SetAuthenticated(AuthSession.FromLoginResponse(response), true);

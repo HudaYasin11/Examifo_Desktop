@@ -24,6 +24,7 @@ public static class MauiProgram
             });
 
         builder.Services.AddSingleton<EncryptionService>();
+        builder.Services.AddSingleton<ILocalDatabasePathProvider, MauiLocalDatabasePathProvider>();
         builder.Services.AddSingleton<DatabaseService>();
         builder.Services.AddSingleton<OutboxService>();
         builder.Services.AddSingleton(new HttpClient

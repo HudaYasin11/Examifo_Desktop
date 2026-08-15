@@ -34,6 +34,22 @@ public sealed class AttemptService(
         ValidateAuthorization(authorization, exam.Id, deviceId, packageVersion);
         StoredOfflineAuthorization result = StoredOfflineAuthorization.FromResponse(authorization);
         await authorizationStore.SaveAsync(result, cancellationToken);
+        await databaseService.SaveAttemptAuthorizationAsync(new AttemptAuthorizationRecord
+        {
+            AuthorizationId = authorization.AuthorizationId,
+            AttemptId = authorization.AttemptId,
+            ExamId = authorization.ExamId,
+            CandidateId = authorization.CandidateId,
+            DeviceId = authorization.DeviceId,
+            PackageVersion = authorization.PackageVersion,
+            NotBeforeUtc = authorization.NotBeforeUtc.UtcDateTime,
+            MustStartBeforeUtc = authorization.MustStartBeforeUtc.UtcDateTime,
+            MustSubmitBeforeUtc = authorization.MustSubmitBeforeUtc.UtcDateTime,
+            DurationSeconds = authorization.DurationSeconds,
+            AttemptNumber = authorization.AttemptNumber,
+            ServerTimeUtc = authorization.ServerTimeUtc.UtcDateTime,
+            State = "Authorized"
+        }, authorization.ShuffleSeed, authorization.AuthorizationToken, cancellationToken);
         return result;
     }
 
@@ -77,6 +93,7 @@ public sealed class AttemptService(
 
         await databaseService.StartAuthorizedAttemptAsync(attempt, authorization.AuthorizationToken);
         await authorizationStore.RemoveAsync(authorization.AuthorizationId, cancellationToken);
+        await databaseService.RemoveAttemptAuthorizationAsync(authorization.AuthorizationId, cancellationToken);
         return attempt;
     }
 
@@ -92,6 +109,7 @@ public sealed class AttemptService(
         if (authorization is null) return;
         await apiClient.CancelAuthorizationAsync(authorization.AuthorizationId, cancellationToken);
         await authorizationStore.RemoveAsync(authorization.AuthorizationId, cancellationToken);
+        await databaseService.RemoveAttemptAuthorizationAsync(authorization.AuthorizationId, cancellationToken);
     }
 
     public async Task<IReadOnlyList<OfflineAuthorizationSummary>> GetServerAuthorizationsAsync(

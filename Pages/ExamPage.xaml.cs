@@ -15,6 +15,7 @@ public partial class ExamPage : ContentPage
     private int _remainingSeconds;
 
     private IDispatcherTimer? _timer;
+    private bool _appearanceRecorded;
 
     private readonly Dictionary<int, QuestionOption?> _selectedAnswers = new();
 
@@ -31,7 +32,8 @@ public partial class ExamPage : ContentPage
         _databaseService = databaseService;
         _submissionService = submissionService;
 
-        _currentQuestionIndex = 0;
+        _currentQuestionIndex = Math.Clamp(attempt.CurrentQuestionIndex, 0,
+            Math.Max(0, exam.Questions.Count - 1));
         _remainingSeconds = Math.Max(0, (int)Math.Ceiling(
             (attempt.DeadlineUtc - DateTime.UtcNow).TotalSeconds));
 
@@ -39,6 +41,39 @@ public partial class ExamPage : ContentPage
 
         StartTimer();
         ShowQuestion();
+    }
+
+    protected override async void OnAppearing()
+    {
+        base.OnAppearing();
+        if (_appearanceRecorded || _attempt.Status != Domain.Enums.AttemptStatus.InProgress) return;
+        _appearanceRecorded = true;
+        try
+        {
+            await _databaseService.RecordProctoringEventWithOperationAsync(
+                _attempt.Id, "exam.view.entered", DateTime.UtcNow, "{}");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Could not preserve exam visibility event: {ex}");
+        }
+    }
+
+    protected override async void OnDisappearing()
+    {
+        if (_attempt.Status == Domain.Enums.AttemptStatus.InProgress)
+        {
+            try
+            {
+                await _databaseService.RecordProctoringEventWithOperationAsync(
+                    _attempt.Id, "exam.view.hidden", DateTime.UtcNow, "{}");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Could not preserve exam visibility event: {ex}");
+            }
+        }
+        base.OnDisappearing();
     }
 
     private void StartTimer()
@@ -243,6 +278,9 @@ public partial class ExamPage : ContentPage
         }
 
         _currentQuestionIndex++;
+
+        await _databaseService.UpdateAttemptProgressAsync(
+            _attempt.Id, _currentQuestionIndex, DateTime.UtcNow);
 
         ShowQuestion();
     }

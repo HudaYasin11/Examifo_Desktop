@@ -26,6 +26,10 @@ public class Attempt
 
     public DateTime? SubmittedAtUtc { get; set; }
 
+    public int CurrentQuestionIndex { get; set; }
+
+    public DateTime LastActivityUtc { get; set; }
+
     [Ignore]
     public List<Answer> Answers { get; set; } = new();
 }

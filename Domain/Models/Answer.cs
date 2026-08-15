@@ -15,7 +15,11 @@ public class Answer
 
     public Guid? SelectedOptionId { get; set; }
 
+    public string ResponseFormat { get; set; } = "selected_options";
+
     public string Response { get; set; } = string.Empty;
+
+    public long Revision { get; set; } = 1;
 
     public DateTime AnsweredAtUtc { get; set; } = DateTime.UtcNow;
 }

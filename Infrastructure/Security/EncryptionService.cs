@@ -50,10 +50,18 @@ public sealed class EncryptionService(Examifo_Desktop.Services.ISecureValueStore
             string? stored = await secureValueStore.GetAsync(KeyName);
             if (stored is not null)
             {
-                byte[] existing = Convert.FromBase64String(stored);
-                if (existing.Length != 32)
-                    throw new System.Security.Cryptography.CryptographicException("Invalid local encryption key.");
-                return _cachedKey = existing;
+                try
+                {
+                    byte[] existing = Convert.FromBase64String(stored);
+                    if (existing.Length != 32)
+                        throw new System.Security.Cryptography.CryptographicException("Invalid local encryption key.");
+                    return _cachedKey = existing;
+                }
+                catch (FormatException ex)
+                {
+                    throw new System.Security.Cryptography.CryptographicException(
+                        "The protected local encryption key is corrupt.", ex);
+                }
             }
             byte[] created = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
             await secureValueStore.SetAsync(KeyName, Convert.ToBase64String(created));
