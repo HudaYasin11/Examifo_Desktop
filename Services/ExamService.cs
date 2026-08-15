@@ -7,27 +7,25 @@ using Examifo_Desktop.Infrastructure.Api.DTOs;
 
 namespace Examifo_Desktop.Services;
 
-public sealed class ExamService(ExamApiClient examApiClient)
+public sealed class ExamService(ExamApiClient examApiClient, TrustedServerTimeService trustedTime)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    public async Task<List<Exam>> GetAvailableExamsAsync(CancellationToken cancellationToken = default)
+    public async Task<List<Exam>> GetAvailableExamsAsync(
+        DateTimeOffset? modifiedSinceUtc = null,
+        CancellationToken cancellationToken = default)
     {
-        AvailableExamsResponse catalogue = await examApiClient.GetAvailableExamsAsync(cancellationToken);
-        return catalogue.Exams.Select(item => new Exam
-        {
-            Id = item.ExamId,
-            Title = item.Title,
-            DurationMinutes = item.DurationMinutes ?? 0,
-            StartsAtUtc = item.StartsAtUtc?.UtcDateTime ?? DateTime.MinValue,
-            EndsAtUtc = item.EndsAtUtc?.UtcDateTime ?? DateTime.MaxValue,
-            PackageVersion = item.PackageVersion.ToString(),
-            PackageHash = item.PackageHash
-        }).ToList();
+        DateTimeOffset requestStarted = DateTimeOffset.UtcNow;
+        AvailableExamsResponse catalogue = await examApiClient.GetAvailableExamsAsync(
+            modifiedSinceUtc, cancellationToken);
+        trustedTime.RecordSample(catalogue.ServerTimeUtc, requestStarted, DateTimeOffset.UtcNow);
+        return AvailableExamMapper.Map(catalogue);
     }
 
     public async Task<Exam> PrepareExamAsync(Exam summary, CancellationToken cancellationToken = default)
     {
+        if (!summary.CanDownload && summary.Questions.Count == 0)
+            throw new InvalidOperationException("This assigned exam is not currently available for download.");
         ExamMetadataResponse metadata = await examApiClient.GetExamAsync(summary.Id, cancellationToken);
         PackageManifestResponse manifest = await examApiClient.GetManifestAsync(summary.Id, cancellationToken);
         byte[] bytes = await examApiClient.DownloadPackageAsync(manifest.DownloadUrl, cancellationToken);

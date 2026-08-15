@@ -1,4 +1,3 @@
-using Examifo_Desktop.Domain.Enums;
 using Examifo_Desktop.Domain.Models;
 using Examifo_Desktop.Infrastructure.Persistence;
 using Examifo_Desktop.Services;
@@ -12,10 +11,12 @@ public partial class ExamListPage : ContentPage
     private readonly ExamService _examService;
     private readonly AttemptService _attemptService;
     private readonly SubmissionService _submissionService;
+    private readonly AuthenticationService _authenticationService;
     private bool _loaded;
 
     public ExamListPage(DatabaseService databaseService, ExamService examService,
-        AttemptService attemptService, SubmissionService submissionService)
+        AttemptService attemptService, SubmissionService submissionService,
+        AuthenticationService authenticationService)
     {
         InitializeComponent();
 
@@ -23,11 +24,34 @@ public partial class ExamListPage : ContentPage
         _examService = examService;
         _attemptService = attemptService;
         _submissionService = submissionService;
+        _authenticationService = authenticationService;
 
         ExamCollectionView.SelectionChanged +=
             ExamCollectionView_SelectionChanged;
 
         ExamCollectionView.ItemsSource = _exams;
+    }
+
+    private async void LogoutButton_Clicked(object sender, EventArgs e)
+    {
+        try
+        {
+            await _authenticationService.LogoutAsync();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Server logout failed: {ex}");
+            bool localOnly = await DisplayAlertAsync("Server unavailable",
+                "Examifo could not revoke the server session. Sign out on this device only?", "Sign out locally", "Cancel");
+            if (!localOnly) return;
+            await _authenticationService.LogoutAsync(localOnly: true);
+        }
+
+        var login = new LoginPage(_databaseService, _authenticationService, _examService,
+            _attemptService, _submissionService);
+        await Navigation.PushAsync(login);
+        foreach (Page page in Navigation.NavigationStack.Where(page => page != login).ToList())
+            Navigation.RemovePage(page);
     }
 
     protected override async void OnAppearing()
@@ -53,13 +77,9 @@ public partial class ExamListPage : ContentPage
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Real exam loading failed: {ex}");
-#if DEBUG
-            _exams = CreateMockExams();
-#else
             _exams = new List<Exam>();
             await DisplayAlertAsync("Unable to load exams",
                 "Your assigned exams could not be retrieved. Please try again.", "OK");
-#endif
         }
 
         ExamCollectionView.ItemsSource = _exams;
@@ -87,59 +107,4 @@ public partial class ExamListPage : ContentPage
         }
     }
 
-    private List<Exam> CreateMockExams()
-    {
-        return new List<Exam>
-        {
-            new Exam
-            {
-                Id = Guid.NewGuid(),
-                Title = "Examifo Demo Exam",
-                Description = "Demo examination for testing Examifo Desktop.",
-                DurationMinutes = 10,
-                MaxAttempts = 1,
-                ProctoringEnabled = false,
-
-                Questions = new List<Question>
-                {
-                    new Question
-                    {
-                        Id = Guid.NewGuid(),
-                        Prompt = "What is 2 + 2?",
-                        QuestionType = QuestionType.SingleChoice,
-                        Marks = 1,
-                        IsRequired = true,
-
-                        Options = new List<QuestionOption>
-                        {
-                            new QuestionOption
-                            {
-                                Text = "3"
-                            },
-
-                            new QuestionOption
-                            {
-                                Text = "4",
-                                IsCorrect = true
-                            },
-
-                            new QuestionOption
-                            {
-                                Text = "5"
-                            }
-                        }
-                    },
-
-                    new Question
-                    {
-                        Id = Guid.NewGuid(),
-                        Prompt = "C# is a programming language.",
-                        QuestionType = QuestionType.TrueFalse,
-                        Marks = 1,
-                        IsRequired = true
-                    }
-                }
-            }
-        };
-    }
 }

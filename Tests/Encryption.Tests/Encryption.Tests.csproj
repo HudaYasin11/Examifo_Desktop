@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\Infrastructure\Security\EncryptionService.cs" Link="EncryptionService.cs" />
+    <Compile Include="..\..\Services\AuthSessionStore.cs" Link="AuthSessionStore.cs" />
+    <Compile Include="..\..\Infrastructure\Api\DTOs\AuthDtos.cs" Link="AuthDtos.cs" />
+  </ItemGroup>
+</Project>

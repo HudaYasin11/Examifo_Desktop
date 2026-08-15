@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\Infrastructure\Api\AuthenticatedHttpClient.cs" Link="AuthenticatedHttpClient.cs" />
+    <Compile Include="..\..\Infrastructure\Api\Clients\DeviceApiClient.cs" Link="DeviceApiClient.cs" />
+    <Compile Include="..\..\Infrastructure\Api\Clients\ExamApiClient.cs" Link="ExamApiClient.cs" />
+    <Compile Include="..\..\Infrastructure\Api\DTOs\AuthDtos.cs" Link="AuthDtos.cs" />
+    <Compile Include="..\..\Infrastructure\Api\DTOs\ExamDtos.cs" Link="ExamDtos.cs" />
+    <Compile Include="..\..\Services\AvailableExamMapper.cs" Link="AvailableExamMapper.cs" />
+    <Compile Include="..\..\Domain\Models\Exam.cs" Link="Exam.cs" />
+    <Compile Include="..\..\Domain\Models\Question.cs" Link="Question.cs" />
+    <Compile Include="..\..\Domain\Models\QuestionOption.cs" Link="QuestionOption.cs" />
+    <Compile Include="..\..\Domain\Enums\QuestionType.cs" Link="QuestionType.cs" />
+  </ItemGroup>
+</Project>

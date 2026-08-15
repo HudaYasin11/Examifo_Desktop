@@ -46,7 +46,15 @@ public partial class ExamDetailsPage : ContentPage
         object sender,
         EventArgs e)
     {
-        await Navigation.PushAsync(
-            new ReadyPage(_exam, _databaseService, _attemptService, _submissionService));
+        try
+        {
+            await _attemptService.GetOrCreateAuthorizationAsync(_exam);
+            await Navigation.PushAsync(
+                new ReadyPage(_exam, _databaseService, _attemptService, _submissionService));
+        }
+        catch (Exception ex)
+        {
+            await DisplayAlertAsync("Offline access unavailable", ex.Message, "OK");
+        }
     }
 }

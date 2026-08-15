@@ -72,6 +72,13 @@
 	</ItemGroup>
 
 	<ItemGroup>
+	  <Compile Remove="Tests\**\*.cs" />
+	  <EmbeddedResource Remove="Tests\**\*" />
+	  <MauiXaml Remove="Tests\**\*" />
+	  <None Remove="Tests\**\*" />
+	</ItemGroup>
+
+	<ItemGroup>
 	  <Folder Include="Infrastructure\Api\DTOs\" />
 	</ItemGroup>
 

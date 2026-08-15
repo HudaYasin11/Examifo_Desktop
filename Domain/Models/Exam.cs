@@ -22,5 +22,13 @@ public class Exam
 
     public string PackageHash { get; set; } = string.Empty;
 
+    public long PackageSizeBytes { get; set; }
+
+    public bool CanDownload { get; set; }
+
+    public bool CanStartOffline { get; set; }
+
+    public string? ExistingAttemptStatus { get; set; }
+
     public List<Question> Questions { get; set; } = new();
 }

@@ -39,7 +39,7 @@ public partial class ReadyPage : ContentPage
     {
         try
         {
-            Attempt attempt = await _attemptService.StartAsync(_exam);
+            Attempt attempt = await _attemptService.StartAuthorizedAsync(_exam);
             await Navigation.PushAsync(new ExamPage(
                 _exam, attempt, _databaseService, _submissionService));
         }
