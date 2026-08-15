@@ -1,5 +1,6 @@
 using Examifo_Desktop.Domain.Models;
 using Examifo_Desktop.Infrastructure.Persistence;
+using Examifo_Desktop.Services;
 
 namespace Examifo_Desktop.Pages;
 
@@ -8,6 +9,7 @@ public partial class ExamPage : ContentPage
     private readonly Exam _exam;
     private readonly Attempt _attempt;
     private readonly DatabaseService _databaseService;
+    private readonly SubmissionService _submissionService;
 
     private int _currentQuestionIndex;
     private int _remainingSeconds;
@@ -19,16 +21,19 @@ public partial class ExamPage : ContentPage
     public ExamPage(
         Exam exam,
         Attempt attempt,
-        DatabaseService databaseService)
+        DatabaseService databaseService,
+        SubmissionService submissionService)
     {
         InitializeComponent();
 
         _exam = exam;
         _attempt = attempt;
         _databaseService = databaseService;
+        _submissionService = submissionService;
 
         _currentQuestionIndex = 0;
-        _remainingSeconds = exam.DurationMinutes * 60;
+        _remainingSeconds = Math.Max(0, (int)Math.Ceiling(
+            (attempt.DeadlineUtc - DateTime.UtcNow).TotalSeconds));
 
         ExamTitleLabel.Text = exam.Title;
 
@@ -185,15 +190,19 @@ public partial class ExamPage : ContentPage
 
         SelectButtonAppearance(selectedButton);
 
+        Answer? existing = await _databaseService.GetAnswerAsync(_attempt.Id, question.Id);
         var answer = new Answer
         {
+            Id = existing?.Id ?? Guid.NewGuid(),
             AttemptId = _attempt.Id,
             QuestionId = question.Id,
+            ExamQuestionId = question.ExamQuestionId,
+            SelectedOptionId = selectedOption.Id,
             Response = selectedOption.Text,
             AnsweredAtUtc = DateTime.UtcNow
         };
 
-        await _databaseService.SaveAnswerAsync(answer);
+        await _databaseService.SaveAnswerWithOperationAsync(_attempt, answer);
     }
 
     private void ResetButtonAppearance(
@@ -242,19 +251,7 @@ public partial class ExamPage : ContentPage
     {
         _timer?.Stop();
 
-        int score = 0;
-
-        foreach (var answer in _selectedAnswers)
-        {
-            QuestionOption? selectedOption =
-                answer.Value;
-
-            if (selectedOption != null &&
-                selectedOption.IsCorrect)
-            {
-                score++;
-            }
-        }
+        int score = 0; // Candidate-safe packages do not include correct answers; grading is server-side.
 
         int totalQuestions =
             _exam.Questions.Count;
@@ -266,21 +263,27 @@ public partial class ExamPage : ContentPage
         _attempt.SubmittedAtUtc =
             DateTime.UtcNow;
 
-        await _databaseService.UpdateAttemptAsync(
-            _attempt);
-
-        // Save the local submission.
         var submission = new Submission
         {
             AttemptId = _attempt.Id,
             CreatedAtUtc = DateTime.UtcNow,
-            Status = "Pending",
+            Status = "Pending sync / grading",
             Score = score,
             TotalQuestions = totalQuestions
         };
 
-        await _databaseService.SaveSubmissionAsync(
-            submission);
+        await _databaseService.SubmitAttemptAsync(_attempt, submission);
+
+        try
+        {
+            await _submissionService.SyncPendingAsync();
+            submission.Status = "Submitted for grading";
+            await _databaseService.SaveSubmissionAsync(submission);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Submission remains pending sync: {ex}");
+        }
 
         await Navigation.PushAsync(
             new SubmissionPage(

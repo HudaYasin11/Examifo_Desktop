@@ -10,6 +10,14 @@ public class Attempt
 
     public Guid ExamId { get; set; }
 
+    public Guid AuthorizationId { get; set; }
+
+    public Guid DeviceId { get; set; }
+
+    public long PackageVersion { get; set; }
+
+    public long NextSequence { get; set; } = 1;
+
     public AttemptStatus Status { get; set; } = AttemptStatus.Authorized;
 
     public DateTime StartedAtUtc { get; set; }

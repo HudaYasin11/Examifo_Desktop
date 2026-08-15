@@ -6,6 +6,8 @@ public class Question
 {
     public Guid Id { get; set; } = Guid.NewGuid();
 
+    public Guid ExamQuestionId { get; set; }
+
     public string Prompt { get; set; } = string.Empty;
 
     public QuestionType QuestionType { get; set; }

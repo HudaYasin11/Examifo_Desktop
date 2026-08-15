@@ -22,8 +22,7 @@ public partial class SubmissionPage : ContentPage
         ExamTitleLabel.Text =
             exam.Title;
 
-        ScoreLabel.Text =
-            $"{submission.Score} / {submission.TotalQuestions}";
+        ScoreLabel.Text = "Pending";
 
         StatusLabel.Text =
             submission.Status;

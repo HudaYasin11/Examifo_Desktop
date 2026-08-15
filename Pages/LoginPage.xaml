@@ -127,6 +127,7 @@
 
 
                         <Button
+                            x:Name="LoginButton"
                             Text="Login"
                             TextColor="White"
                             BackgroundColor="#1479F5"

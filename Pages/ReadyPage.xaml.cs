@@ -1,6 +1,7 @@
 using Examifo_Desktop.Domain.Enums;
 using Examifo_Desktop.Domain.Models;
 using Examifo_Desktop.Infrastructure.Persistence;
+using Examifo_Desktop.Services;
 
 namespace Examifo_Desktop.Pages;
 
@@ -8,15 +9,21 @@ public partial class ReadyPage : ContentPage
 {
     private readonly Exam _exam;
     private readonly DatabaseService _databaseService;
+    private readonly AttemptService _attemptService;
+    private readonly SubmissionService _submissionService;
 
     public ReadyPage(
         Exam exam,
-        DatabaseService databaseService)
+        DatabaseService databaseService,
+        AttemptService attemptService,
+        SubmissionService submissionService)
     {
         InitializeComponent();
 
         _exam = exam;
         _databaseService = databaseService;
+        _attemptService = attemptService;
+        _submissionService = submissionService;
 
         ExamTitleLabel.Text = exam.Title;
 
@@ -30,17 +37,15 @@ public partial class ReadyPage : ContentPage
         object sender,
         EventArgs e)
     {
-        var attempt = new Attempt
+        try
         {
-            ExamId = _exam.Id,
-            Status = AttemptStatus.InProgress,
-            StartedAtUtc = DateTime.UtcNow,
-            DeadlineUtc = DateTime.UtcNow.AddMinutes(_exam.DurationMinutes)
-        };
-
-        await _databaseService.SaveAttemptAsync(attempt);
-
-        await Navigation.PushAsync(
-            new ExamPage(_exam, attempt, _databaseService));
+            Attempt attempt = await _attemptService.StartAsync(_exam);
+            await Navigation.PushAsync(new ExamPage(
+                _exam, attempt, _databaseService, _submissionService));
+        }
+        catch (Exception ex)
+        {
+            await DisplayAlertAsync("Cannot start exam", ex.Message, "OK");
+        }
     }
 }

@@ -11,6 +11,10 @@ public class Answer
 
     public Guid QuestionId { get; set; }
 
+    public Guid ExamQuestionId { get; set; }
+
+    public Guid? SelectedOptionId { get; set; }
+
     public string Response { get; set; } = string.Empty;
 
     public DateTime AnsweredAtUtc { get; set; } = DateTime.UtcNow;
