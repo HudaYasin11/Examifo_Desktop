@@ -31,18 +31,23 @@ public sealed class OfflineAuthorizationStore(ISecureValueStore secureValueStore
         {
             List<StoredOfflineAuthorization> values = await LoadCoreAsync();
             values.RemoveAll(x => x.AuthorizationId == authorization.AuthorizationId
-                || x.AttemptId == authorization.AttemptId || x.ExamId == authorization.ExamId);
+                || x.AttemptId == authorization.AttemptId
+                || (x.ExamId == authorization.ExamId && x.CandidateId == authorization.CandidateId));
             values.Add(authorization);
             await secureValueStore.SetAsync(StorageKey, JsonSerializer.Serialize(values, JsonOptions));
         }
         finally { _gate.Release(); }
     }
 
-    public async Task<StoredOfflineAuthorization?> FindForExamAsync(Guid examId,
+    public async Task<StoredOfflineAuthorization?> FindForExamAsync(Guid examId, Guid candidateId,
         CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken);
-        try { return (await LoadCoreAsync()).SingleOrDefault(x => x.ExamId == examId); }
+        try
+        {
+            return (await LoadCoreAsync()).SingleOrDefault(x =>
+                x.ExamId == examId && x.CandidateId == candidateId);
+        }
         finally { _gate.Release(); }
     }
 

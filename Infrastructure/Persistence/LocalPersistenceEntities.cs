@@ -31,6 +31,32 @@ public sealed class DownloadedExamRecord
     [Indexed] public string State { get; set; } = string.Empty;
 }
 
+public sealed class AvailableExamRecord
+{
+    [PrimaryKey] public string CacheKey { get; set; } = string.Empty;
+    [Indexed] public Guid CandidateId { get; set; }
+    [Indexed] public Guid ExamId { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public int DurationMinutes { get; set; }
+    public int MaxAttempts { get; set; }
+    public bool ProctoringEnabled { get; set; }
+    public DateTime StartsAtUtc { get; set; }
+    public DateTime EndsAtUtc { get; set; }
+    public long PackageVersion { get; set; }
+    public string PackageHash { get; set; } = string.Empty;
+    public long PackageSizeBytes { get; set; }
+    public bool CanDownload { get; set; }
+    public bool CanStartOffline { get; set; }
+    public string? ExistingAttemptStatus { get; set; }
+    public DateTime RefreshedAtUtc { get; set; }
+}
+
+public sealed class ExamCatalogueCheckpointRecord
+{
+    [PrimaryKey] public Guid CandidateId { get; set; }
+    public DateTime LastServerRefreshUtc { get; set; }
+}
+
 public sealed class AttemptAuthorizationRecord
 {
     [PrimaryKey] public Guid AuthorizationId { get; set; }

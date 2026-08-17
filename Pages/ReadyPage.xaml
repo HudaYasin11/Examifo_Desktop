@@ -10,10 +10,10 @@
     <ScrollView>
 
         <VerticalStackLayout
-            Padding="40"
+            Padding="20"
             Spacing="20"
             MaximumWidthRequest="700"
-            HorizontalOptions="Center"
+            HorizontalOptions="Fill"
             VerticalOptions="Center">
 
             <Label
@@ -33,7 +33,7 @@
                 BackgroundColor="White"
                 BorderColor="#E5E7EB"
                 CornerRadius="16"
-                Padding="30"
+                Padding="22"
                 HasShadow="True">
 
                 <VerticalStackLayout Spacing="18">
@@ -73,6 +73,7 @@
                     </Frame>
 
                     <Button
+                        x:Name="StartExamButton"
                         Text="Start Exam"
                         BackgroundColor="#1479F5"
                         TextColor="White"

@@ -7,12 +7,12 @@
     Title="Exam"
     BackgroundColor="#F6F8FB">
 
-    <Grid RowDefinitions="90,*">
+    <Grid RowDefinitions="Auto,*">
 
         <!-- EXAM HEADER -->
 
         <Grid Grid.Row="0"
-              Padding="30,0">
+              Padding="20,16">
 
             <Grid.Background>
                 <LinearGradientBrush StartPoint="0,0"
@@ -69,13 +69,13 @@
 
         <!-- QUESTION AREA -->
 
-        <ScrollView Grid.Row="1">
+        <ScrollView x:Name="QuestionScrollView" Grid.Row="1">
 
             <VerticalStackLayout
-                Padding="30"
+                Padding="20"
                 Spacing="20"
                 MaximumWidthRequest="800"
-                HorizontalOptions="Center">
+                HorizontalOptions="Fill">
 
                 <!-- QUESTION CARD -->
 
@@ -84,7 +84,7 @@
                     BorderColor="#E5E7EB"
                     CornerRadius="14"
                     HasShadow="True"
-                    Padding="25">
+                    Padding="20">
 
                     <VerticalStackLayout Spacing="18">
 
@@ -94,6 +94,7 @@
                             ColumnDefinitions="*,Auto">
 
                             <Label
+                                x:Name="QuestionProgressLabel"
                                 Text="Question"
                                 FontSize="14"
                                 FontAttributes="Bold"
@@ -108,6 +109,7 @@
                                 HasShadow="False">
 
                                 <Label
+                                    x:Name="MarksLabel"
                                     Text="1 mark"
                                     FontSize="10"
                                     FontAttributes="Bold"
@@ -139,23 +141,134 @@
                             x:Name="OptionsLayout"
                             Spacing="10" />
 
+                        <VerticalStackLayout x:Name="TextAnswerLayout" IsVisible="False" Spacing="8">
+                            <Picker x:Name="CodeLanguagePicker" Title="Select code language"
+                                    IsVisible="False" SelectedIndexChanged="CodeLanguagePicker_SelectedIndexChanged" />
+                            <Editor x:Name="ResponseEditor" Placeholder="Write your answer here…"
+                                    AutoSize="TextChanges" MinimumHeightRequest="120"
+                                    MaximumHeightRequest="360" TextChanged="ResponseEditor_TextChanged"
+                                    BackgroundColor="#F8FAFC" TextColor="#111827" />
+                            <Border x:Name="MathKeyboardPanel" IsVisible="False" Padding="10"
+                                    Stroke="#CBD5E1" StrokeShape="RoundRectangle 8" BackgroundColor="#E2E8F0">
+                                <VerticalStackLayout Spacing="8">
+                                    <ScrollView Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
+                                        <HorizontalStackLayout Spacing="6">
+                                            <Button Text="123" CommandParameter="Basic" Clicked="MathCategoryButton_Clicked" />
+                                            <Button Text="∞≠∈" CommandParameter="Symbols" Clicked="MathCategoryButton_Clicked" />
+                                            <Button Text="abc" CommandParameter="Letters" Clicked="MathCategoryButton_Clicked" />
+                                            <Button Text="αβγδ" CommandParameter="Greek" Clicked="MathCategoryButton_Clicked" />
+                                            <Button Text="☰ Tools" Clicked="MathToolsButton_Clicked" />
+                                        </HorizontalStackLayout>
+                                    </ScrollView>
+                                    <Label x:Name="MathModeLabel" Text="Mode: Math" FontSize="11"
+                                           FontAttributes="Bold" TextColor="#334155" />
+                                    <FlexLayout x:Name="MathKeyboardLayout" Direction="Row" Wrap="Wrap" />
+                                    <Label Text="Symbols are inserted as portable mathematical notation and saved with your answer."
+                                           FontSize="11" TextColor="#64748B" />
+                                </VerticalStackLayout>
+                            </Border>
+                            <Grid ColumnDefinitions="*,Auto">
+                                <Label x:Name="SaveStatusLabel" Text="Saved locally" IsVisible="False"
+                                       FontSize="12" TextColor="#047857" />
+                                <Label x:Name="WordCountLabel" Grid.Column="1" Text="0 words"
+                                       IsVisible="False" FontSize="12" TextColor="#64748B" />
+                            </Grid>
+                        </VerticalStackLayout>
+
+                        <VerticalStackLayout x:Name="DrawingAnswerLayout" IsVisible="False" Spacing="10">
+                            <Label Text="Draw your answer below. Strokes are saved locally."
+                                   FontSize="12" TextColor="#64748B" />
+                            <VerticalStackLayout Spacing="8">
+                                <HorizontalStackLayout Spacing="8">
+                                    <Label Text="Color" FontAttributes="Bold" VerticalOptions="Center" />
+                                    <HorizontalStackLayout x:Name="DrawingColorPalette" Spacing="7" />
+                                </HorizontalStackLayout>
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                                    <Label Text="Thickness" FontAttributes="Bold" VerticalOptions="Center" />
+                                    <Slider x:Name="DrawingThicknessSlider" Grid.Column="1" Minimum="1" Maximum="12"
+                                            Value="3" ValueChanged="DrawingThicknessSlider_ValueChanged" />
+                                    <Button Grid.Column="2" Text="Clear drawing" HorizontalOptions="End"
+                                            Clicked="ClearDrawingButton_Clicked" />
+                                </Grid>
+                            </VerticalStackLayout>
+                            <Border Stroke="#CBD5E1" StrokeThickness="1" BackgroundColor="White"
+                                    HeightRequest="320" StrokeShape="RoundRectangle 8">
+                                <GraphicsView x:Name="DrawingCanvas" Drawable="{x:Null}"
+                                              StartInteraction="DrawingCanvas_StartInteraction"
+                                              DragInteraction="DrawingCanvas_DragInteraction"
+                                              EndInteraction="DrawingCanvas_EndInteraction" />
+                            </Border>
+                            <Label x:Name="DrawingSaveStatusLabel" Text="Saved locally" IsVisible="False"
+                                   FontSize="12" TextColor="#047857" HorizontalOptions="End" />
+                        </VerticalStackLayout>
+
+                        <VerticalStackLayout x:Name="StructuredAnswerLayout" IsVisible="False" Spacing="12">
+                            <Label Text="Complete each part below." FontSize="12" TextColor="#64748B" />
+                            <VerticalStackLayout x:Name="StructuredFieldsLayout" Spacing="12" />
+                            <Label x:Name="StructuredSaveStatusLabel" Text="Saved locally" IsVisible="False"
+                                   FontSize="12" TextColor="#047857" HorizontalOptions="End" />
+                        </VerticalStackLayout>
+
+                        <VerticalStackLayout x:Name="TableAnswerLayout" IsVisible="False" Spacing="12">
+                            <Label Text="Enter a response in each applicable cell."
+                                   FontSize="12" TextColor="#64748B" />
+                            <ScrollView Orientation="Horizontal">
+                                <Grid x:Name="TableFieldsGrid" RowSpacing="6" ColumnSpacing="6" />
+                            </ScrollView>
+                            <Label x:Name="TableSaveStatusLabel" Text="Saved locally" IsVisible="False"
+                                   FontSize="12" TextColor="#047857" HorizontalOptions="End" />
+                        </VerticalStackLayout>
+
+                        <Label x:Name="UnsupportedQuestionLabel" IsVisible="False"
+                               TextColor="#B45309" BackgroundColor="#FFFBEB" Padding="12"
+                               Text="This question type is not available in this engine batch." />
+
                     </VerticalStackLayout>
 
                 </Frame>
 
-                <!-- NEXT -->
-
-                <Button
-    x:Name="NextButton"
-    Text="Next"
-    TextColor="White"
-    BackgroundColor="#1479F5"
-    FontAttributes="Bold"
-    CornerRadius="8"
-    HeightRequest="48"
-    Clicked="NextButton_Clicked" />
+                <Label Text="Question navigator" FontAttributes="Bold" TextColor="#475569" />
+                <ScrollView Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
+                    <HorizontalStackLayout x:Name="QuestionNavigatorLayout" Spacing="8" />
+                </ScrollView>
+                <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="10">
+                    <Button x:Name="PreviousButton" Grid.Column="0" Text="Previous"
+                            Clicked="PreviousButton_Clicked" BackgroundColor="#E2E8F0"
+                            TextColor="#1E293B" CornerRadius="8" HeightRequest="48" />
+                    <Button x:Name="ClearAnswerButton" Grid.Column="1" Text="Clear answer"
+                            Clicked="ClearAnswerButton_Clicked" BackgroundColor="#FFF7ED"
+                            TextColor="#C2410C" CornerRadius="8" HeightRequest="48" />
+                    <Button x:Name="NextButton" Grid.Column="2" Text="Next" TextColor="White"
+                            BackgroundColor="#1479F5" FontAttributes="Bold" CornerRadius="8"
+                            HeightRequest="48" Clicked="NextButton_Clicked" />
+                </Grid>
             </VerticalStackLayout>
 
+        </ScrollView>
+
+        <ScrollView x:Name="ReviewScrollView" Grid.Row="1" IsVisible="False"
+                    BackgroundColor="#F6F8FB">
+            <VerticalStackLayout Padding="24" Spacing="18" MaximumWidthRequest="850"
+                                 HorizontalOptions="Fill">
+                <Label Text="Review your answers" FontSize="28" FontAttributes="Bold"
+                       TextColor="#111827" />
+                <Label x:Name="ReviewSummaryLabel" FontSize="14" TextColor="#64748B" />
+                <Border x:Name="MissingRequiredBanner" IsVisible="False" Padding="14"
+                        BackgroundColor="#FEF2F2" Stroke="#FCA5A5"
+                        StrokeShape="RoundRectangle 10">
+                    <Label x:Name="MissingRequiredLabel" TextColor="#991B1B" />
+                </Border>
+                <VerticalStackLayout x:Name="ReviewItemsLayout" Spacing="10" />
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                    <Button Grid.Column="0" Text="Back to exam" Clicked="BackToExamButton_Clicked"
+                            BackgroundColor="#E2E8F0" TextColor="#1E293B" CornerRadius="8"
+                            HeightRequest="50" />
+                    <Button x:Name="SubmitReviewedButton" Grid.Column="1" Text="Submit exam"
+                            Clicked="SubmitReviewedButton_Clicked" BackgroundColor="#1479F5"
+                            TextColor="White" FontAttributes="Bold" CornerRadius="8"
+                            HeightRequest="50" />
+                </Grid>
+            </VerticalStackLayout>
         </ScrollView>
 
     </Grid>

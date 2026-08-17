@@ -10,6 +10,7 @@ public partial class ExamDetailsPage : ContentPage
     private readonly DatabaseService _databaseService;
     private readonly AttemptService _attemptService;
     private readonly SubmissionService _submissionService;
+    private bool _continueInProgress;
 
     public ExamDetailsPage(
         Exam exam,
@@ -46,15 +47,35 @@ public partial class ExamDetailsPage : ContentPage
         object sender,
         EventArgs e)
     {
+        if (_continueInProgress) return;
+        _continueInProgress = true;
+        ContinueButton.IsEnabled = false;
+        ContinueButton.Text = "Preparing offline access…";
         try
         {
+            Examifo_Desktop.Domain.Models.Attempt? resumable =
+                await _attemptService.GetResumableAttemptAsync(_exam);
+            if (resumable is not null)
+            {
+                await Navigation.PushAsync(new ExamPage(
+                    _exam, resumable, _databaseService, _submissionService, _attemptService));
+                return;
+            }
             await _attemptService.GetOrCreateAuthorizationAsync(_exam);
             await Navigation.PushAsync(
                 new ReadyPage(_exam, _databaseService, _attemptService, _submissionService));
         }
         catch (Exception ex)
         {
-            await DisplayAlertAsync("Offline access unavailable", ex.Message, "OK");
+            System.Diagnostics.Debug.WriteLine($"Offline access decision failed: {ex}");
+            string explanation = await _attemptService.ExplainOfflineAccessFailureAsync(_exam, ex);
+            await DisplayAlertAsync("Cannot continue this exam", explanation, "OK");
+        }
+        finally
+        {
+            _continueInProgress = false;
+            ContinueButton.IsEnabled = true;
+            ContinueButton.Text = "Continue";
         }
     }
 }

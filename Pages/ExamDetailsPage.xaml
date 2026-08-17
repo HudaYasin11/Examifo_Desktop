@@ -10,10 +10,10 @@
     <ScrollView>
 
         <VerticalStackLayout
-            Padding="35"
+            Padding="20"
             Spacing="20"
             MaximumWidthRequest="850"
-            HorizontalOptions="Center">
+            HorizontalOptions="Fill">
 
             <Label
                 Text="Exam Details"
@@ -30,7 +30,7 @@
                 BackgroundColor="White"
                 BorderColor="#E5E7EB"
                 CornerRadius="16"
-                Padding="28"
+                Padding="22"
                 HasShadow="True">
 
                 <VerticalStackLayout Spacing="18">
@@ -47,12 +47,45 @@
                         TextColor="#64748B" />
 
                     <Grid
+                        x:Name="StatsGrid"
                         ColumnDefinitions="*,*"
-                        RowDefinitions="Auto,Auto"
+                        RowDefinitions="Auto,Auto,Auto,Auto"
                         ColumnSpacing="15"
                         RowSpacing="12">
 
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup Name="WidthStates">
+                                <VisualState Name="Compact">
+                                    <VisualState.StateTriggers><AdaptiveTrigger MinWindowWidth="0" /></VisualState.StateTriggers>
+                                    <VisualState.Setters>
+                                        <Setter TargetName="DurationCard" Property="Grid.Row" Value="0" />
+                                        <Setter TargetName="DurationCard" Property="Grid.Column" Value="0" />
+                                        <Setter TargetName="QuestionsCard" Property="Grid.Row" Value="1" />
+                                        <Setter TargetName="QuestionsCard" Property="Grid.Column" Value="0" />
+                                        <Setter TargetName="AttemptsCard" Property="Grid.Row" Value="2" />
+                                        <Setter TargetName="AttemptsCard" Property="Grid.Column" Value="0" />
+                                        <Setter TargetName="ProctoringCard" Property="Grid.Row" Value="3" />
+                                        <Setter TargetName="ProctoringCard" Property="Grid.Column" Value="0" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState Name="Wide">
+                                    <VisualState.StateTriggers><AdaptiveTrigger MinWindowWidth="650" /></VisualState.StateTriggers>
+                                    <VisualState.Setters>
+                                        <Setter TargetName="DurationCard" Property="Grid.Row" Value="0" />
+                                        <Setter TargetName="DurationCard" Property="Grid.Column" Value="0" />
+                                        <Setter TargetName="QuestionsCard" Property="Grid.Row" Value="0" />
+                                        <Setter TargetName="QuestionsCard" Property="Grid.Column" Value="1" />
+                                        <Setter TargetName="AttemptsCard" Property="Grid.Row" Value="1" />
+                                        <Setter TargetName="AttemptsCard" Property="Grid.Column" Value="0" />
+                                        <Setter TargetName="ProctoringCard" Property="Grid.Row" Value="1" />
+                                        <Setter TargetName="ProctoringCard" Property="Grid.Column" Value="1" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+
                         <Frame
+                            x:Name="DurationCard"
                             Grid.Row="0"
                             Grid.Column="0"
                             BackgroundColor="#F8FAFC"
@@ -77,6 +110,7 @@
                         </Frame>
 
                         <Frame
+                            x:Name="QuestionsCard"
                             Grid.Row="0"
                             Grid.Column="1"
                             BackgroundColor="#F8FAFC"
@@ -101,6 +135,7 @@
                         </Frame>
 
                         <Frame
+                            x:Name="AttemptsCard"
                             Grid.Row="1"
                             Grid.Column="0"
                             BackgroundColor="#F8FAFC"
@@ -125,6 +160,7 @@
                         </Frame>
 
                         <Frame
+                            x:Name="ProctoringCard"
                             Grid.Row="1"
                             Grid.Column="1"
                             BackgroundColor="#E0F2FE"
@@ -165,6 +201,7 @@
                     </Frame>
 
                     <Button
+                        x:Name="ContinueButton"
                         Text="Continue"
                         BackgroundColor="#1479F5"
                         TextColor="White"

@@ -10,6 +10,9 @@ public class Attempt
 
     public Guid ExamId { get; set; }
 
+    [Indexed]
+    public Guid CandidateId { get; set; }
+
     public Guid AuthorizationId { get; set; }
 
     public Guid DeviceId { get; set; }
@@ -29,6 +32,11 @@ public class Attempt
     public int CurrentQuestionIndex { get; set; }
 
     public DateTime LastActivityUtc { get; set; }
+
+    public string EncryptedShuffleSeed { get; set; } = string.Empty;
+
+    [Ignore]
+    public string ShuffleSeed { get; set; } = string.Empty;
 
     [Ignore]
     public List<Answer> Answers { get; set; } = new();

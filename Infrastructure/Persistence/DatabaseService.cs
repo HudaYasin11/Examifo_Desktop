@@ -140,6 +140,85 @@ public class DatabaseService
         await _database.InsertOrReplaceAsync(exam);
     }
 
+    public async Task<DownloadedExamRecord?> GetDownloadedExamAsync(Guid examId,
+        CancellationToken cancellationToken = default)
+    {
+        if (examId == Guid.Empty) return null;
+        await InitializeAsync(cancellationToken);
+        return await _database.FindAsync<DownloadedExamRecord>(examId);
+    }
+
+    public async Task SetDownloadedExamStateAsync(Guid examId, string state,
+        CancellationToken cancellationToken = default)
+    {
+        if (examId == Guid.Empty || string.IsNullOrWhiteSpace(state)) return;
+        await InitializeAsync(cancellationToken);
+        await _database.ExecuteAsync(
+            "UPDATE DownloadedExamRecord SET State = ? WHERE ExamId = ?", state, examId);
+    }
+
+    public async Task ReplaceExamCatalogueAsync(Guid candidateId, IEnumerable<AvailableExamRecord> exams,
+        DateTime serverRefreshUtc, bool fullRefresh,
+        CancellationToken cancellationToken = default)
+    {
+        AvailableExamRecord[] records = exams.ToArray();
+        if (candidateId == Guid.Empty || serverRefreshUtc == default
+            || records.Any(x => x.ExamId == Guid.Empty))
+            throw new ArgumentException("A valid exam catalogue is required.", nameof(exams));
+        await InitializeAsync(cancellationToken);
+        await _database.RunInTransactionAsync(connection =>
+        {
+            Dictionary<Guid, AvailableExamRecord> existing = connection.Table<AvailableExamRecord>()
+                .Where(x => x.CandidateId == candidateId).ToDictionary(x => x.ExamId);
+            if (fullRefresh)
+                connection.Execute("DELETE FROM AvailableExamRecord WHERE CandidateId = ?", candidateId);
+            foreach (AvailableExamRecord record in records)
+            {
+                if (record.MaxAttempts <= 0 && existing.TryGetValue(record.ExamId, out AvailableExamRecord? prior))
+                {
+                    record.MaxAttempts = prior.MaxAttempts;
+                    record.ProctoringEnabled = prior.ProctoringEnabled;
+                }
+                record.CandidateId = candidateId;
+                record.CacheKey = $"{candidateId:N}:{record.ExamId:N}";
+                record.RefreshedAtUtc = serverRefreshUtc;
+                connection.InsertOrReplace(record);
+            }
+            connection.InsertOrReplace(new ExamCatalogueCheckpointRecord
+            {
+                CandidateId = candidateId,
+                LastServerRefreshUtc = serverRefreshUtc
+            });
+        });
+    }
+
+    public async Task UpdateCachedExamMetadataAsync(Guid candidateId, Guid examId, int maxAttempts,
+        bool proctoringEnabled, CancellationToken cancellationToken = default)
+    {
+        if (candidateId == Guid.Empty || examId == Guid.Empty || maxAttempts <= 0)
+            throw new ArgumentException("Valid authoritative exam metadata is required.");
+        await InitializeAsync(cancellationToken);
+        await _database.ExecuteAsync("UPDATE AvailableExamRecord SET MaxAttempts = ?, ProctoringEnabled = ? " +
+            "WHERE CandidateId = ? AND ExamId = ?", maxAttempts, proctoringEnabled, candidateId, examId);
+    }
+
+    public async Task<List<AvailableExamRecord>> GetCachedExamCatalogueAsync(Guid candidateId,
+        CancellationToken cancellationToken = default)
+    {
+        if (candidateId == Guid.Empty) return [];
+        await InitializeAsync(cancellationToken);
+        return await _database.Table<AvailableExamRecord>()
+            .Where(x => x.CandidateId == candidateId).OrderBy(x => x.Title).ToListAsync();
+    }
+
+    public async Task<DateTime?> GetExamCatalogueCheckpointAsync(Guid candidateId,
+        CancellationToken cancellationToken = default)
+    {
+        if (candidateId == Guid.Empty) return null;
+        await InitializeAsync(cancellationToken);
+        return (await _database.FindAsync<ExamCatalogueCheckpointRecord>(candidateId))?.LastServerRefreshUtc;
+    }
+
     public async Task SaveAttemptAuthorizationAsync(AttemptAuthorizationRecord authorization,
         string shuffleSeed, string authorizationToken, CancellationToken cancellationToken = default)
     {
@@ -155,8 +234,9 @@ public class DatabaseService
         await _database.RunInTransactionAsync(connection =>
         {
             connection.Execute("DELETE FROM AttemptAuthorizationRecord " +
-                "WHERE AuthorizationId = ? OR AttemptId = ? OR ExamId = ?",
-                authorization.AuthorizationId, authorization.AttemptId, authorization.ExamId);
+                "WHERE AuthorizationId = ? OR AttemptId = ? OR (ExamId = ? AND CandidateId = ?)",
+                authorization.AuthorizationId, authorization.AttemptId, authorization.ExamId,
+                authorization.CandidateId);
             connection.Insert(authorization);
         });
     }
@@ -239,7 +319,7 @@ public class DatabaseService
                 AttemptId = attemptId,
                 AuthorizationId = attempt.AuthorizationId,
                 Sequence = sequence,
-                Type = "proctoring.event",
+                Type = "proctoring.event-recorded",
                 OccurredAtUtc = occurredAtUtc,
                 PackageVersion = attempt.PackageVersion,
                 PayloadJson = encryptedPayload
@@ -312,16 +392,44 @@ public class DatabaseService
     };
 
     public async Task StartAuthorizedAttemptAsync(Attempt attempt, string authorizationToken,
+        string? shuffleSeed = null,
         CancellationToken cancellationToken = default)
     {
         await InitializeAsync();
         string encryptedPayload = await _encryptionService.EncryptAsync(
             JsonSerializer.Serialize(new { authorizationToken }), cancellationToken);
+        string encryptedShuffleSeed = await _encryptionService.EncryptAsync(
+            string.IsNullOrWhiteSpace(shuffleSeed) ? attempt.Id.ToString("N") : shuffleSeed,
+            cancellationToken);
         await _database.RunInTransactionAsync(connection =>
         {
             if (attempt.Status != Domain.Enums.AttemptStatus.InProgress)
                 throw new InvalidOperationException("An attempt must be in progress before it can be started locally.");
-            connection.InsertOrReplace(attempt);
+            Attempt? persisted = connection.Find<Attempt>(attempt.Id);
+            if (persisted is not null)
+            {
+                bool sameIdentity = persisted.ExamId == attempt.ExamId
+                    && persisted.CandidateId == attempt.CandidateId
+                    && persisted.AuthorizationId == attempt.AuthorizationId
+                    && persisted.DeviceId == attempt.DeviceId
+                    && persisted.PackageVersion == attempt.PackageVersion;
+                bool alreadyStarted = connection.Table<SyncOperation>().Any(x =>
+                    x.AttemptId == attempt.Id && x.Type == "attempt.started");
+                if (!sameIdentity || !alreadyStarted)
+                    throw new InvalidOperationException(
+                        "The existing local attempt cannot be safely reused for this authorization.");
+
+                attempt.Status = persisted.Status;
+                attempt.StartedAtUtc = persisted.StartedAtUtc;
+                attempt.DeadlineUtc = persisted.DeadlineUtc;
+                attempt.NextSequence = persisted.NextSequence;
+                attempt.CurrentQuestionIndex = persisted.CurrentQuestionIndex;
+                attempt.LastActivityUtc = persisted.LastActivityUtc;
+                return;
+            }
+
+            attempt.EncryptedShuffleSeed = encryptedShuffleSeed;
+            connection.Insert(attempt);
             connection.Insert(new SyncOperation
             {
                 AttemptId = attempt.Id,
@@ -343,18 +451,10 @@ public class DatabaseService
     {
         ValidateAnswer(answer);
         await InitializeAsync();
+        Guid[] selectedOptionIds = GetSelectedOptionIds(answer);
         string encryptedResponse = await _encryptionService.EncryptAsync(answer.Response, cancellationToken);
-        string encryptedPayload = await _encryptionService.EncryptAsync(JsonSerializer.Serialize(new
-        {
-            answerId = answer.Id,
-            examQuestionId = answer.ExamQuestionId,
-            questionId = answer.QuestionId,
-            responseFormat = answer.ResponseFormat,
-            response = answer.Response,
-            selectedOptionIds = answer.SelectedOptionId.HasValue
-                ? new[] { answer.SelectedOptionId.Value }
-                : Array.Empty<Guid>()
-        }), cancellationToken);
+        string encryptedPayload = await _encryptionService.EncryptAsync(
+            JsonSerializer.Serialize(BuildAnswerPayload(answer, selectedOptionIds)), cancellationToken);
         await _database.RunInTransactionAsync(connection =>
         {
             Attempt persistedAttempt = connection.Find<Attempt>(attempt.Id)
@@ -394,6 +494,59 @@ public class DatabaseService
             answer.Id = previous?.Id ?? answer.Id;
             answer.Revision = revision;
         });
+    }
+
+    private static Guid[] GetSelectedOptionIds(Answer answer)
+    {
+        if (answer.SelectedOptionId.HasValue) return [answer.SelectedOptionId.Value];
+        if (!string.Equals(answer.ResponseFormat, "selected_options", StringComparison.Ordinal)) return [];
+        try { return JsonSerializer.Deserialize<Guid[]>(answer.Response) ?? []; }
+        catch (JsonException) { return []; }
+    }
+
+    private static Dictionary<string, object?> BuildAnswerPayload(Answer answer, Guid[] selectedOptionIds)
+    {
+        var payload = new Dictionary<string, object?>
+        {
+            ["answerId"] = answer.Id,
+            ["examQuestionId"] = answer.ExamQuestionId,
+            ["questionId"] = answer.QuestionId,
+            ["responseFormat"] = answer.ResponseFormat
+        };
+        if (answer.ResponseFormat == "selected_options") payload["selectedOptionIds"] = selectedOptionIds;
+        else if (answer.ResponseFormat is "text" or "essay") payload["responseText"] = answer.Response;
+        else if (answer.ResponseFormat == "code")
+        {
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(answer.Response);
+                payload["codeLanguage"] = document.RootElement.TryGetProperty("language", out JsonElement language)
+                    ? language.GetString() : null;
+                payload["codeSubmission"] = document.RootElement.TryGetProperty("submission", out JsonElement submission)
+                    ? submission.GetString() : string.Empty;
+            }
+            catch (JsonException)
+            {
+                payload["codeLanguage"] = null;
+                payload["codeSubmission"] = answer.Response;
+            }
+        }
+        else if (answer.ResponseFormat is "math" or "drawing" or "multi_part" or "table_grid")
+        {
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(answer.Response);
+                payload["responseDocument"] = document.RootElement.Clone();
+            }
+            catch (JsonException)
+            {
+                payload["responseDocument"] = new Dictionary<string, object?>
+                {
+                    ["value"] = answer.Response
+                };
+            }
+        }
+        return payload;
     }
 
     public async Task ClearAnswerWithOperationAsync(Attempt attempt, Guid questionId,
@@ -604,7 +757,7 @@ public class DatabaseService
         });
     }
 
-    public async Task<AttemptRecoverySnapshot?> GetRecoverableAttemptAsync(
+    public async Task<AttemptRecoverySnapshot?> GetRecoverableAttemptAsync(Guid candidateId, Guid deviceId,
         CancellationToken cancellationToken = default)
     {
         await InitializeAsync(cancellationToken);
@@ -613,6 +766,7 @@ public class DatabaseService
             .Where(x => x.Status is Domain.Enums.AttemptStatus.InProgress
                 or Domain.Enums.AttemptStatus.SubmittedLocally or Domain.Enums.AttemptStatus.Syncing
                 or Domain.Enums.AttemptStatus.Rejected or Domain.Enums.AttemptStatus.NeedsReview)
+            .Where(x => x.CandidateId == candidateId && x.DeviceId == deviceId)
             .OrderByDescending(x => x.LastActivityUtc).FirstOrDefault();
         if (attempt is null) return null;
         List<Answer> answers = await GetAnswersAsync(attempt.Id);
@@ -659,6 +813,43 @@ public class DatabaseService
         return await _database.Table<Attempt>()
             .Where(a => a.Id == attemptId)
             .FirstOrDefaultAsync();
+    }
+
+    public async Task<Attempt?> GetLatestAttemptForExamAsync(Guid examId, Guid candidateId, Guid deviceId,
+        CancellationToken cancellationToken = default)
+    {
+        await InitializeAsync(cancellationToken);
+        return (await _database.Table<Attempt>().Where(x => x.ExamId == examId
+                && x.CandidateId == candidateId && x.DeviceId == deviceId).ToListAsync())
+            .OrderByDescending(x => x.LastActivityUtc).ThenByDescending(x => x.StartedAtUtc)
+            .FirstOrDefault();
+    }
+
+    public async Task<Attempt?> GetInProgressAttemptForExamAsync(Guid examId, Guid candidateId, Guid deviceId,
+        CancellationToken cancellationToken = default)
+    {
+        await InitializeAsync(cancellationToken);
+        List<Attempt> candidates = await _database.Table<Attempt>().Where(x =>
+                x.ExamId == examId && x.Status == Domain.Enums.AttemptStatus.InProgress
+                && x.DeviceId == deviceId
+                && (x.CandidateId == candidateId || x.CandidateId == Guid.Empty))
+            .ToListAsync();
+        Attempt? attempt = candidates
+            .OrderByDescending(x => x.CandidateId == candidateId)
+            .ThenByDescending(x => x.LastActivityUtc).ThenByDescending(x => x.StartedAtUtc)
+            .FirstOrDefault();
+        if (attempt is not null && attempt.CandidateId == Guid.Empty)
+        {
+            // Safe legacy adoption: the authenticated backend device must match. Rows owned
+            // by a different device are never surfaced or reassigned.
+            attempt.CandidateId = candidateId;
+            await _database.UpdateAsync(attempt);
+        }
+        if (attempt is not null)
+            attempt.ShuffleSeed = string.IsNullOrWhiteSpace(attempt.EncryptedShuffleSeed)
+                ? attempt.Id.ToString("N")
+                : await _encryptionService.DecryptAsync(attempt.EncryptedShuffleSeed, cancellationToken);
+        return attempt;
     }
 
     public async Task<List<Attempt>> GetAttemptsAsync()

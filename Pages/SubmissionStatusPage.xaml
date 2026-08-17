@@ -7,11 +7,12 @@
     Title="Submission"
     BackgroundColor="#F6F8FB">
 
+    <ScrollView>
     <VerticalStackLayout
-        Padding="40"
+        Padding="20"
         Spacing="20"
         VerticalOptions="Center"
-        HorizontalOptions="Center"
+        HorizontalOptions="Fill"
         MaximumWidthRequest="600">
 
         <Label
@@ -31,7 +32,7 @@
             BackgroundColor="#F0FDFA"
             BorderColor="#99F6E4"
             CornerRadius="14"
-            Padding="25"
+            Padding="22"
             HasShadow="True">
 
             <VerticalStackLayout Spacing="12">
@@ -64,5 +65,6 @@
             Clicked="ViewResultButton_Clicked" />
 
     </VerticalStackLayout>
+    </ScrollView>
 
 </ContentPage>

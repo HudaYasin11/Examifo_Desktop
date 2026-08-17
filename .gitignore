@@ -75,3 +75,6 @@ TestResults/
 *.db-wal
 *.sqlite
 *.sqlite3
+
+# Local verification build output
+.verification/

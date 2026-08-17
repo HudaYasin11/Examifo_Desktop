@@ -6,6 +6,7 @@ using Examifo_Desktop.Services;
 
 await TestAuthorizationSurvivesRestartAsync();
 await TestAuthorizationReplacementAndRemovalAsync();
+await TestCandidateAuthorizationIsolationAsync();
 await TestCorruptAuthorizationIsRemovedAsync();
 await TestNoSessionAsync();
 await TestVerifiedIdentityAsync();
@@ -14,6 +15,7 @@ await TestOfflineRestorePreservesSessionAsync();
 await TestRejectedSessionIsClearedAsync();
 await PortionCompletionTests.TestLogoutLifecycleAsync();
 PortionCompletionTests.TestTrustedServerTime();
+PortionCompletionTests.TestAttemptClock();
 PortionCompletionTests.TestSessionTransitions();
 Console.WriteLine("All offline authorization and session restoration tests passed.");
 
@@ -22,7 +24,8 @@ static async Task TestAuthorizationSurvivesRestartAsync()
     var secure = new MemoryStore();
     StoredOfflineAuthorization expected = Authorization();
     await new OfflineAuthorizationStore(secure).SaveAsync(expected);
-    StoredOfflineAuthorization? restored = await new OfflineAuthorizationStore(secure).FindForExamAsync(expected.ExamId);
+    StoredOfflineAuthorization? restored = await new OfflineAuthorizationStore(secure)
+        .FindForExamAsync(expected.ExamId, expected.CandidateId);
     Assert(restored == expected && secure.Values[OfflineAuthorizationStore.StorageKey].Contains(expected.AuthorizationToken),
         "one-time authorization survives restart in secure storage");
 }
@@ -32,21 +35,42 @@ static async Task TestAuthorizationReplacementAndRemovalAsync()
     var secure = new MemoryStore();
     var store = new OfflineAuthorizationStore(secure);
     StoredOfflineAuthorization first = Authorization();
-    StoredOfflineAuthorization replacement = Authorization() with { ExamId = first.ExamId };
+    StoredOfflineAuthorization replacement = Authorization() with
+    {
+        ExamId = first.ExamId,
+        CandidateId = first.CandidateId
+    };
     await store.SaveAsync(first);
     await store.SaveAsync(replacement);
-    Assert((await store.FindForExamAsync(first.ExamId))?.AuthorizationId == replacement.AuthorizationId,
+    Assert((await store.FindForExamAsync(first.ExamId, first.CandidateId))?.AuthorizationId
+        == replacement.AuthorizationId,
         "new authorization replaces stale authorization for the exam");
     await store.RemoveAsync(replacement.AuthorizationId);
-    Assert(await store.FindForExamAsync(first.ExamId) is null && !secure.Values.ContainsKey(OfflineAuthorizationStore.StorageKey),
+    Assert(await store.FindForExamAsync(first.ExamId, first.CandidateId) is null
+        && !secure.Values.ContainsKey(OfflineAuthorizationStore.StorageKey),
         "consumed or cancelled authorization is removed");
+}
+
+static async Task TestCandidateAuthorizationIsolationAsync()
+{
+    var secure = new MemoryStore();
+    var store = new OfflineAuthorizationStore(secure);
+    StoredOfflineAuthorization first = Authorization();
+    StoredOfflineAuthorization second = Authorization() with { ExamId = first.ExamId };
+    await store.SaveAsync(first);
+    await store.SaveAsync(second);
+
+    Assert((await store.FindForExamAsync(first.ExamId, first.CandidateId))?.AuthorizationId
+        == first.AuthorizationId, "candidate A retains its authorization for a shared exam");
+    Assert((await store.FindForExamAsync(second.ExamId, second.CandidateId))?.AuthorizationId
+        == second.AuthorizationId, "candidate B retains a separate authorization for the same exam");
 }
 
 static async Task TestCorruptAuthorizationIsRemovedAsync()
 {
     var secure = new MemoryStore();
     secure.Values[OfflineAuthorizationStore.StorageKey] = "{broken";
-    Assert(await new OfflineAuthorizationStore(secure).FindForExamAsync(Guid.NewGuid()) is null
+    Assert(await new OfflineAuthorizationStore(secure).FindForExamAsync(Guid.NewGuid(), Guid.NewGuid()) is null
         && !secure.Values.ContainsKey(OfflineAuthorizationStore.StorageKey),
         "corrupt authorization state is rejected and removed");
 }
@@ -212,6 +236,34 @@ public static void TestTrustedServerTime()
         "deadline uses the earlier duration or server submission limit");
 }
 
+public static void TestAttemptClock()
+{
+    DateTimeOffset start = new(2026, 8, 15, 12, 0, 0, TimeSpan.Zero);
+    var provider = new ManualTimeProvider(start);
+    var trusted = new TrustedServerTimeService(new MemoryTimeStore(), provider);
+    var clock = new AttemptClock(start.UtcDateTime.AddMinutes(10), start.UtcDateTime, trusted, provider);
+    provider.Advance(TimeSpan.FromMinutes(1));
+    AttemptClockSample normal = clock.Sample();
+    Assert(Math.Round(normal.Remaining.TotalMinutes) == 9 && !normal.ClockChangeDetected,
+        "attempt countdown follows monotonic elapsed time");
+
+    provider.ChangeWallClock(TimeSpan.FromHours(-1));
+    AttemptClockSample backward = clock.Sample();
+    Assert(Math.Round(backward.Remaining.TotalMinutes) == 9 && backward.ClockChangeDetected,
+        "backward wall-clock changes cannot extend the attempt and are detected");
+
+    provider.Advance(TimeSpan.FromMinutes(1));
+    AttemptClockSample continued = clock.Sample();
+    Assert(Math.Round(continued.Remaining.TotalMinutes) == 8,
+        "monotonic countdown continues while the wall clock remains manipulated");
+
+    provider.ChangeWallClock(TimeSpan.FromHours(2));
+    AttemptClockSample forward = clock.Sample();
+    Assert(Math.Round(forward.Remaining.TotalMinutes) == 8
+        && forward.WallClockDrift.Duration() >= TimeSpan.FromMinutes(59),
+        "forward wall-clock changes cannot shorten or extend the active attempt");
+}
+
 public static void TestSessionTransitions()
 {
     var state = new SessionStateService();
@@ -244,6 +296,21 @@ sealed class MemoryTimeStore : ITrustedTimeStore
 sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
 {
     public override DateTimeOffset GetUtcNow() => now;
+}
+
+sealed class ManualTimeProvider(DateTimeOffset wallUtc) : TimeProvider
+{
+    private DateTimeOffset _wallUtc = wallUtc;
+    private long _timestamp;
+    public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+    public override DateTimeOffset GetUtcNow() => _wallUtc;
+    public override long GetTimestamp() => _timestamp;
+    public void Advance(TimeSpan elapsed)
+    {
+        _timestamp += elapsed.Ticks;
+        _wallUtc += elapsed;
+    }
+    public void ChangeWallClock(TimeSpan change) => _wallUtc += change;
 }
 
 sealed class MemoryStore : ISecureValueStore

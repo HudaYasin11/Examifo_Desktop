@@ -10,17 +10,17 @@
     <ScrollView>
 
         <VerticalStackLayout
-            Padding="40"
+            Padding="20"
             Spacing="20"
             MaximumWidthRequest="650"
-            HorizontalOptions="Center"
+            HorizontalOptions="Fill"
             VerticalOptions="Center">
 
             <Frame
                 BackgroundColor="White"
                 BorderColor="#E5E7EB"
                 CornerRadius="14"
-                Padding="30"
+                Padding="22"
                 HasShadow="True">
 
                 <VerticalStackLayout

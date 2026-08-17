@@ -11,11 +11,13 @@ public sealed class StartupPage : ContentPage
     private readonly ExamService _examService;
     private readonly AttemptService _attemptService;
     private readonly SubmissionService _submissionService;
+    private readonly ExamAcquisitionCoordinator _examAcquisitionCoordinator;
     private bool _started;
 
     public StartupPage(DatabaseService databaseService, SessionRestorationService sessionRestorationService,
         AuthenticationService authenticationService, ExamService examService,
-        AttemptService attemptService, SubmissionService submissionService)
+        AttemptService attemptService, SubmissionService submissionService,
+        ExamAcquisitionCoordinator examAcquisitionCoordinator)
     {
         _databaseService = databaseService;
         _sessionRestorationService = sessionRestorationService;
@@ -23,6 +25,7 @@ public sealed class StartupPage : ContentPage
         _examService = examService;
         _attemptService = attemptService;
         _submissionService = submissionService;
+        _examAcquisitionCoordinator = examAcquisitionCoordinator;
         Content = new VerticalStackLayout
         {
             HorizontalOptions = LayoutOptions.Center,
@@ -48,15 +51,15 @@ public sealed class StartupPage : ContentPage
             SessionRestoreResult restored = await _sessionRestorationService.RestoreAsync();
             destination = restored.Status is SessionRestoreStatus.VerifiedOnline or SessionRestoreStatus.AvailableOffline
                 ? new ExamListPage(_databaseService, _examService, _attemptService, _submissionService,
-                    _authenticationService)
+                    _authenticationService, _examAcquisitionCoordinator)
                 : new LoginPage(_databaseService, _authenticationService, _examService,
-                    _attemptService, _submissionService);
+                    _attemptService, _submissionService, _examAcquisitionCoordinator);
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Startup restoration failed: {ex}");
             destination = new LoginPage(_databaseService, _authenticationService, _examService,
-                _attemptService, _submissionService);
+                _attemptService, _submissionService, _examAcquisitionCoordinator);
         }
         await Navigation.PushAsync(destination);
         Navigation.RemovePage(this);

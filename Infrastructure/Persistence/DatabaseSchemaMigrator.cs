@@ -20,7 +20,7 @@ public sealed class DatabaseMigrationException(int targetVersion, Exception inne
 
 public sealed class DatabaseSchemaMigrator(SQLiteAsyncConnection database)
 {
-    public const int CurrentVersion = 4;
+    public const int CurrentVersion = 9;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private bool _initialized;
 
@@ -148,6 +148,100 @@ public sealed class DatabaseSchemaMigrator(SQLiteAsyncConnection database)
             {
                 Version = 4,
                 Name = "Checkpoint, proctoring outbox, and integrity hardening",
+                AppliedAtUtc = DateTime.UtcNow
+            });
+        }),
+        5 => database.RunInTransactionAsync(connection =>
+        {
+            connection.CreateTable<AvailableExamRecord>();
+            connection.CreateTable<ExamCatalogueCheckpointRecord>();
+            connection.Execute("CREATE INDEX IF NOT EXISTS IX_AvailableExam_Refresh " +
+                "ON AvailableExamRecord (RefreshedAtUtc)");
+            connection.Insert(new SchemaMigrationRecord
+            {
+                Version = 5,
+                Name = "Durable available-exam catalogue cache",
+                AppliedAtUtc = DateTime.UtcNow
+            });
+        }),
+        6 => database.RunInTransactionAsync(connection =>
+        {
+            int exists = connection.ExecuteScalar<int>(
+                "SELECT COUNT(*) FROM pragma_table_info('Attempt') WHERE name = 'EncryptedShuffleSeed'");
+            if (exists == 0)
+                connection.Execute("ALTER TABLE Attempt ADD COLUMN EncryptedShuffleSeed varchar NOT NULL DEFAULT ''");
+            connection.Insert(new SchemaMigrationRecord
+            {
+                Version = 6,
+                Name = "Durable encrypted deterministic exam ordering seed",
+                AppliedAtUtc = DateTime.UtcNow
+            });
+        }),
+        7 => database.RunInTransactionAsync(connection =>
+        {
+            int exists = connection.ExecuteScalar<int>(
+                "SELECT COUNT(*) FROM pragma_table_info('Attempt') WHERE name = 'CandidateId'");
+            if (exists == 0)
+                connection.Execute("ALTER TABLE Attempt ADD COLUMN CandidateId varchar(36) " +
+                    "NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'");
+
+            // Authorization rows may still exist for attempts created by an older build. Use
+            // them to recover ownership where possible; unmatched legacy attempts remain
+            // unowned and can only be claimed after their device is authenticated again.
+            connection.Execute("UPDATE Attempt SET CandidateId = (" +
+                "SELECT CandidateId FROM AttemptAuthorizationRecord a " +
+                "WHERE a.AttemptId = Attempt.Id LIMIT 1) " +
+                "WHERE CandidateId = '00000000-0000-0000-0000-000000000000' " +
+                "AND EXISTS (SELECT 1 FROM AttemptAuthorizationRecord a WHERE a.AttemptId = Attempt.Id)");
+            connection.Execute("CREATE INDEX IF NOT EXISTS IX_Attempt_Candidate_Exam_Status " +
+                "ON Attempt (CandidateId, ExamId, Status)");
+
+            // Offline authorizations are candidate-owned. The former ExamId-only uniqueness
+            // prevented two candidates on one installation from holding the same exam.
+            connection.Execute("DROP INDEX IF EXISTS IX_Authorization_Exam");
+            connection.Execute("CREATE UNIQUE INDEX IF NOT EXISTS IX_Authorization_Candidate_Exam " +
+                "ON AttemptAuthorizationRecord (CandidateId, ExamId)");
+            connection.Insert(new SchemaMigrationRecord
+            {
+                Version = 7,
+                Name = "Candidate-isolated attempts and offline authorizations",
+                AppliedAtUtc = DateTime.UtcNow
+            });
+        }),
+        8 => database.RunInTransactionAsync(connection =>
+        {
+            // The former catalogue and checkpoint were shared by every account on the
+            // installation. They cannot be attributed safely, so discard only this
+            // reconstructible cache and recreate it with candidate ownership.
+            connection.Execute("DROP TABLE IF EXISTS AvailableExamRecord");
+            connection.Execute("DROP TABLE IF EXISTS ExamCatalogueCheckpointRecord");
+            connection.CreateTable<AvailableExamRecord>();
+            connection.CreateTable<ExamCatalogueCheckpointRecord>();
+            connection.Execute("CREATE UNIQUE INDEX IF NOT EXISTS IX_AvailableExam_Candidate_Exam " +
+                "ON AvailableExamRecord (CandidateId, ExamId)");
+            connection.Execute("CREATE INDEX IF NOT EXISTS IX_AvailableExam_Candidate_Title " +
+                "ON AvailableExamRecord (CandidateId, Title)");
+            connection.Insert(new SchemaMigrationRecord
+            {
+                Version = 8,
+                Name = "Candidate-isolated authoritative exam catalogue",
+                AppliedAtUtc = DateTime.UtcNow
+            });
+        }),
+        9 => database.RunInTransactionAsync(connection =>
+        {
+            int maxAttemptsExists = connection.ExecuteScalar<int>(
+                "SELECT COUNT(*) FROM pragma_table_info('AvailableExamRecord') WHERE name = 'MaxAttempts'");
+            if (maxAttemptsExists == 0)
+                connection.Execute("ALTER TABLE AvailableExamRecord ADD COLUMN MaxAttempts integer NOT NULL DEFAULT 0");
+            int proctoringExists = connection.ExecuteScalar<int>(
+                "SELECT COUNT(*) FROM pragma_table_info('AvailableExamRecord') WHERE name = 'ProctoringEnabled'");
+            if (proctoringExists == 0)
+                connection.Execute("ALTER TABLE AvailableExamRecord ADD COLUMN ProctoringEnabled integer NOT NULL DEFAULT 0");
+            connection.Insert(new SchemaMigrationRecord
+            {
+                Version = 9,
+                Name = "Authoritative exam metadata cache",
                 AppliedAtUtc = DateTime.UtcNow
             });
         }),

@@ -3,6 +3,7 @@ using Examifo_Desktop.Infrastructure.Persistence;
 using Examifo_Desktop.Infrastructure.Security;
 using Examifo_Desktop.Services;
 using SQLite;
+using System.Text.Json;
 
 string testDirectory = Path.Combine(Path.GetTempPath(), "examifo-persistence-tests", Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(testDirectory);
@@ -16,10 +17,13 @@ try
     await TestSensitiveFieldsAreEncryptedAsync(Path.Combine(testDirectory, "encrypted.db3"));
     await TestLogicalUniquenessConstraintsAsync(Path.Combine(testDirectory, "constraints.db3"));
     await TestDurableAttemptLifecycleAsync(Path.Combine(testDirectory, "lifecycle.db3"));
+    await TestCandidateAttemptIsolationAsync(Path.Combine(testDirectory, "candidate-isolation.db3"));
     await TestCheckpointAndProctoringAsync(Path.Combine(testDirectory, "checkpoint.db3"));
     await TestIntegrityFailurePreservesDataAsync(Path.Combine(testDirectory, "integrity.db3"));
     await TestCrashAndConcurrencySafetyAsync(Path.Combine(testDirectory, "concurrency.db3"));
     await TestCorruptEncryptionKeyIsNotReplacedAsync();
+    await TestDurableIncrementalCatalogueAsync(Path.Combine(testDirectory, "catalogue.db3"));
+    await TestDownloadedPackageActivationAsync(Path.Combine(testDirectory, "packages.db3"));
     Console.WriteLine("All persistence migration tests passed.");
 }
 finally
@@ -45,6 +49,9 @@ static async Task TestFreshDatabaseAsync(string path)
         && await TableExistsAsync(connection, "SyncCheckpointRecord")
         && await TableExistsAsync(connection, "ProctoringEventRecord"),
         "fresh migration creates every required preservation table");
+    Assert(await TableExistsAsync(connection, "AvailableExamRecord")
+        && await TableExistsAsync(connection, "ExamCatalogueCheckpointRecord"),
+        "fresh migration creates the durable exam catalogue cache");
     await connection.CloseAsync();
 }
 
@@ -218,7 +225,7 @@ static async Task TestCheckpointAndProctoringAsync(string path)
     var raw = new SQLiteAsyncConnection(path);
     ProctoringEventRecord record = (await raw.Table<ProctoringEventRecord>().ToListAsync()).Single();
     var operation = (await raw.Table<Examifo_Desktop.Infrastructure.Sync.SyncOperation>().ToListAsync())
-        .Single(x => x.Type == "proctoring.event");
+        .Single(x => x.Type == "proctoring.event-recorded");
     Assert(record.OperationId == operation.OperationId && record.Sequence == operation.Sequence
         && record.EncryptedMetadataJson.StartsWith("enc:v1:") && operation.PayloadJson.StartsWith("enc:v1:"),
         "proctoring event and encrypted outbox operation commit atomically at one sequence");
@@ -302,6 +309,79 @@ static async Task TestCorruptEncryptionKeyIsNotReplacedAsync()
         "corrupt protected key fails closed and is never silently replaced");
 }
 
+static async Task TestDurableIncrementalCatalogueAsync(string path)
+{
+    var service = new DatabaseService(new EncryptionService(new MemorySecureValueStore()),
+        new TestPathProvider(path));
+    DateTime firstRefresh = DateTime.UtcNow.AddMinutes(-2);
+    DateTime secondRefresh = DateTime.UtcNow;
+    Guid firstId = Guid.NewGuid();
+    Guid secondId = Guid.NewGuid();
+    Guid firstCandidate = Guid.NewGuid();
+    Guid secondCandidate = Guid.NewGuid();
+    await service.ReplaceExamCatalogueAsync(firstCandidate, [
+        new AvailableExamRecord { ExamId = firstId, Title = "First", PackageVersion = 1,
+            PackageHash = new string('a', 64), PackageSizeBytes = 10 },
+        new AvailableExamRecord { ExamId = secondId, Title = "Second", PackageVersion = 1,
+            PackageHash = new string('b', 64), PackageSizeBytes = 10 }
+    ], firstRefresh, fullRefresh: true);
+    await service.ReplaceExamCatalogueAsync(firstCandidate, [
+        new AvailableExamRecord { ExamId = firstId, Title = "First updated", PackageVersion = 2,
+            PackageHash = new string('c', 64), PackageSizeBytes = 20 }
+    ], secondRefresh, fullRefresh: false);
+    await service.ReplaceExamCatalogueAsync(secondCandidate, [
+        new AvailableExamRecord { ExamId = secondId, Title = "Other candidate", PackageVersion = 3,
+            PackageHash = new string('d', 64), PackageSizeBytes = 30 }
+    ], secondRefresh, fullRefresh: true);
+    List<AvailableExamRecord> cached = await service.GetCachedExamCatalogueAsync(firstCandidate);
+    List<AvailableExamRecord> other = await service.GetCachedExamCatalogueAsync(secondCandidate);
+    Assert(cached.Count == 2 && cached.Single(x => x.ExamId == firstId).PackageVersion == 2
+        && cached.Single(x => x.ExamId == secondId).PackageVersion == 1
+        && other.Count == 1 && other[0].Title == "Other candidate"
+        && await service.GetExamCatalogueCheckpointAsync(firstCandidate) == secondRefresh,
+        "catalogue refresh is durable and isolated between candidates");
+
+    await service.ReplaceExamCatalogueAsync(firstCandidate, [
+        new AvailableExamRecord { ExamId = firstId, Title = "Authoritative", PackageVersion = 4,
+            PackageHash = new string('e', 64), PackageSizeBytes = 40 }
+    ], secondRefresh.AddMinutes(1), fullRefresh: true);
+    cached = await service.GetCachedExamCatalogueAsync(firstCandidate);
+    other = await service.GetCachedExamCatalogueAsync(secondCandidate);
+    Assert(cached.Count == 1 && cached[0].ExamId == firstId
+        && cached[0].Title == "Authoritative" && other.Count == 1,
+        "full catalogue replacement removes stale exams only for the current candidate");
+}
+
+static async Task TestDownloadedPackageActivationAsync(string path)
+{
+    var service = new DatabaseService(new EncryptionService(new MemorySecureValueStore()),
+        new TestPathProvider(path));
+    Guid examId = Guid.NewGuid();
+    var first = new DownloadedExamRecord
+    {
+        ExamId = examId, PackageVersion = 1, ContentHash = new string('a', 64),
+        LocalPath = @"C:\managed\v1.examifo", DownloadedAtUtc = DateTime.UtcNow,
+        State = "Ready"
+    };
+    await service.SaveDownloadedExamAsync(first);
+    DownloadedExamRecord? restored = await service.GetDownloadedExamAsync(examId);
+    Assert(restored is { PackageVersion: 1, State: "Ready" }
+        && restored.LocalPath == first.LocalPath,
+        "downloaded package activation survives database restart boundaries");
+
+    await service.SaveDownloadedExamAsync(new DownloadedExamRecord
+    {
+        ExamId = examId, PackageVersion = 2, ContentHash = new string('b', 64),
+        LocalPath = @"C:\managed\v2.examifo", DownloadedAtUtc = DateTime.UtcNow,
+        State = "Ready"
+    });
+    await service.SetDownloadedExamStateAsync(examId, "Corrupt");
+    DownloadedExamRecord? replaced = await service.GetDownloadedExamAsync(examId);
+    Assert(replaced is { PackageVersion: 2, State: "Corrupt" }
+        && replaced.LocalPath.EndsWith("v2.examifo", StringComparison.Ordinal),
+        "package activation atomically replaces metadata and supports corruption quarantine");
+}
+
 static async Task TestLogicalUniquenessConstraintsAsync(string path)
 {
     var connection = new SQLiteAsyncConnection(path);
@@ -341,10 +421,25 @@ static async Task TestDurableAttemptLifecycleAsync(string path)
     var attempt = new Attempt
     {
         Id = Guid.NewGuid(), ExamId = Guid.NewGuid(), AuthorizationId = Guid.NewGuid(),
-        DeviceId = Guid.NewGuid(), PackageVersion = 4, Status = Examifo_Desktop.Domain.Enums.AttemptStatus.InProgress,
+        CandidateId = Guid.NewGuid(), DeviceId = Guid.NewGuid(), PackageVersion = 4,
+        Status = Examifo_Desktop.Domain.Enums.AttemptStatus.InProgress,
         StartedAtUtc = started, DeadlineUtc = started.AddHours(1), NextSequence = 1
     };
     await service.StartAuthorizedAttemptAsync(attempt, "authorization-token");
+    long sequenceAfterStart = attempt.NextSequence;
+    await service.StartAuthorizedAttemptAsync(attempt, "authorization-token");
+    var startCheck = new SQLiteAsyncConnection(path);
+    int startOperations = (await startCheck.Table<Examifo_Desktop.Infrastructure.Sync.SyncOperation>()
+        .ToListAsync()).Count(x => x.AttemptId == attempt.Id && x.Type == "attempt.started");
+    await startCheck.CloseAsync();
+    Assert(startOperations == 1 && attempt.NextSequence == sequenceAfterStart,
+        "repeated authorized start reuses the existing attempt and start operation");
+    Assert((await service.GetLatestAttemptForExamAsync(
+        attempt.ExamId, attempt.CandidateId, attempt.DeviceId))?.Id == attempt.Id,
+        "latest local attempt can be located by exam for offline resume routing");
+    Assert((await service.GetInProgressAttemptForExamAsync(
+        attempt.ExamId, attempt.CandidateId, attempt.DeviceId))?.Id == attempt.Id,
+        "in-progress attempt is preferred for resume even when other attempt history exists");
 
     string[] formats =
     ["selected_options", "boolean", "text", "essay", "math", "drawing", "multi_part", "table_grid", "code"];
@@ -376,7 +471,8 @@ static async Task TestDurableAttemptLifecycleAsync(string path)
 
     await service.UpdateAttemptProgressAsync(attempt.Id, 5, DateTime.UtcNow);
     var restarted = new DatabaseService(new EncryptionService(secureStore), new TestPathProvider(path));
-    AttemptRecoverySnapshot? recovery = await restarted.GetRecoverableAttemptAsync();
+    AttemptRecoverySnapshot? recovery = await restarted.GetRecoverableAttemptAsync(
+        attempt.CandidateId, attempt.DeviceId);
     Assert(recovery?.Attempt.Id == attempt.Id && recovery.Attempt.CurrentQuestionIndex == 5
         && recovery.Answers.Count == formats.Length - 1 && recovery.PendingOperationCount == formats.Length + 3,
         "restart recovery restores progress, answers, and pending operation count");
@@ -399,6 +495,13 @@ static async Task TestDurableAttemptLifecycleAsync(string path)
     Assert(editRejected, "submitted attempts are immutable");
 
     List<Examifo_Desktop.Infrastructure.Sync.SyncOperation> claimed = await service.ClaimPendingOperationsAsync();
+    string[] documentFormats = ["math", "drawing", "multi_part", "table_grid"];
+    List<JsonElement> answerPayloads = claimed.Where(x => x.Type == "answer.upserted")
+        .Select(x => JsonDocument.Parse(x.PayloadJson).RootElement.Clone()).ToList();
+    Assert(documentFormats.All(format => answerPayloads.Any(payload =>
+            payload.TryGetProperty("responseFormat", out JsonElement value)
+            && value.GetString() == format && payload.TryGetProperty("responseDocument", out _))),
+        "advanced answer formats synchronize through responseDocument payloads");
     Assert(claimed.Count == sequenceAfterFirstSubmission - 1
         && (await service.GetAttemptAsync(attempt.Id))?.Status == Examifo_Desktop.Domain.Enums.AttemptStatus.Syncing,
         "outbox claim is ordered, durable, and moves a submitted attempt to syncing");
@@ -433,6 +536,43 @@ static async Task TestDurableAttemptLifecycleAsync(string path)
     Assert(clearedOperations == 1 && submittedOperations == 1,
         "clear and submission each produce exactly one durable operation");
     await raw.CloseAsync();
+}
+
+static async Task TestCandidateAttemptIsolationAsync(string path)
+{
+    var service = new DatabaseService(
+        new EncryptionService(new MemorySecureValueStore()), new TestPathProvider(path));
+    Guid examId = Guid.NewGuid();
+    Guid firstCandidate = Guid.NewGuid();
+    Guid secondCandidate = Guid.NewGuid();
+    Guid firstDevice = Guid.NewGuid();
+    Guid secondDevice = Guid.NewGuid();
+    DateTime started = DateTime.UtcNow;
+
+    var first = new Attempt
+    {
+        Id = Guid.NewGuid(), ExamId = examId, CandidateId = firstCandidate,
+        AuthorizationId = Guid.NewGuid(), DeviceId = firstDevice, PackageVersion = 1,
+        Status = Examifo_Desktop.Domain.Enums.AttemptStatus.InProgress,
+        StartedAtUtc = started, DeadlineUtc = started.AddHours(1), LastActivityUtc = started
+    };
+    var second = new Attempt
+    {
+        Id = Guid.NewGuid(), ExamId = examId, CandidateId = secondCandidate,
+        AuthorizationId = Guid.NewGuid(), DeviceId = secondDevice, PackageVersion = 1,
+        Status = Examifo_Desktop.Domain.Enums.AttemptStatus.InProgress,
+        StartedAtUtc = started.AddSeconds(1), DeadlineUtc = started.AddHours(1),
+        LastActivityUtc = started.AddSeconds(1)
+    };
+    await service.StartAuthorizedAttemptAsync(first, "first-token", "first-seed");
+    await service.StartAuthorizedAttemptAsync(second, "second-token", "second-seed");
+
+    Assert((await service.GetInProgressAttemptForExamAsync(examId, firstCandidate, firstDevice))?.Id
+        == first.Id, "candidate A resumes only candidate A's attempt for the same exam");
+    Assert((await service.GetInProgressAttemptForExamAsync(examId, secondCandidate, secondDevice))?.Id
+        == second.Id, "candidate B resumes only candidate B's attempt for the same exam");
+    Assert(await service.GetInProgressAttemptForExamAsync(examId, firstCandidate, secondDevice) is null,
+        "candidate and device ownership must both match before an attempt is exposed");
 }
 
 static async Task<bool> TableExistsAsync(SQLiteAsyncConnection connection, string tableName)

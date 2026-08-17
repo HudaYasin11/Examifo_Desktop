@@ -11,6 +11,7 @@
     <Compile Include="..\..\Infrastructure\Api\DTOs\AttemptSyncDtos.cs" Link="AttemptSyncDtos.cs" />
     <Compile Include="..\..\Services\TokenRefreshCoordinator.cs" Link="TokenRefreshCoordinator.cs" />
     <Compile Include="..\..\Services\TrustedServerTimeService.cs" Link="TrustedServerTimeService.cs" />
+    <Compile Include="..\..\Services\AttemptClock.cs" Link="AttemptClock.cs" />
     <Compile Include="..\..\Services\SessionStateService.cs" Link="SessionStateService.cs" />
     <Compile Include="..\..\Services\SessionLogoutService.cs" Link="SessionLogoutService.cs" />
   </ItemGroup>

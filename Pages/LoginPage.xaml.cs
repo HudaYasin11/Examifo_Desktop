@@ -10,6 +10,7 @@ public partial class LoginPage : ContentPage
     private readonly ExamService _examService;
     private readonly AttemptService _attemptService;
     private readonly SubmissionService _submissionService;
+    private readonly ExamAcquisitionCoordinator _examAcquisitionCoordinator;
     private CancellationTokenSource? _loginCancellation;
     private bool _loginInProgress;
 
@@ -18,7 +19,8 @@ public partial class LoginPage : ContentPage
         AuthenticationService authenticationService,
         ExamService examService,
         AttemptService attemptService,
-        SubmissionService submissionService)
+        SubmissionService submissionService,
+        ExamAcquisitionCoordinator examAcquisitionCoordinator)
     {
         InitializeComponent();
 
@@ -27,6 +29,7 @@ public partial class LoginPage : ContentPage
         _examService = examService;
         _attemptService = attemptService;
         _submissionService = submissionService;
+        _examAcquisitionCoordinator = examAcquisitionCoordinator;
     }
 
     private async void LoginButton_Clicked(object sender, EventArgs e)
@@ -50,7 +53,7 @@ public partial class LoginPage : ContentPage
             {
                 await Navigation.PushAsync(new ExamListPage(
                     _databaseService, _examService, _attemptService, _submissionService,
-                    _authenticationService));
+                    _authenticationService, _examAcquisitionCoordinator));
                 Navigation.RemovePage(this);
                 return;
             }

@@ -7,12 +7,12 @@
     Title="Examifo Login"
     BackgroundColor="#F6F8FB">
 
-    <Grid RowDefinitions="110,*">
+    <Grid RowDefinitions="Auto,*">
 
         <!-- TOP HEADER -->
 
         <Grid Grid.Row="0"
-              Padding="35,0">
+              Padding="20,18">
 
             <Grid.Background>
                 <LinearGradientBrush StartPoint="0,0"
@@ -54,10 +54,10 @@
         <ScrollView Grid.Row="1">
 
             <VerticalStackLayout
-                Padding="30,55"
+                Padding="20,32"
                 Spacing="20"
                 MaximumWidthRequest="480"
-                HorizontalOptions="Center">
+                HorizontalOptions="Fill">
 
                 <Label
                     Text="Welcome back"
@@ -81,7 +81,7 @@
                     BorderColor="#E5E7EB"
                     CornerRadius="14"
                     HasShadow="True"
-                    Padding="30"
+                    Padding="22"
                     Margin="0,10">
 
                     <VerticalStackLayout Spacing="16">

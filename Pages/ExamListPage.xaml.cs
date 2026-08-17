@@ -12,11 +12,14 @@ public partial class ExamListPage : ContentPage
     private readonly AttemptService _attemptService;
     private readonly SubmissionService _submissionService;
     private readonly AuthenticationService _authenticationService;
+    private readonly ExamAcquisitionCoordinator _examAcquisitionCoordinator;
+    private readonly SemaphoreSlim _toastGate = new(1, 1);
     private bool _loaded;
 
     public ExamListPage(DatabaseService databaseService, ExamService examService,
         AttemptService attemptService, SubmissionService submissionService,
-        AuthenticationService authenticationService)
+        AuthenticationService authenticationService,
+        ExamAcquisitionCoordinator examAcquisitionCoordinator)
     {
         InitializeComponent();
 
@@ -25,11 +28,44 @@ public partial class ExamListPage : ContentPage
         _attemptService = attemptService;
         _submissionService = submissionService;
         _authenticationService = authenticationService;
+        _examAcquisitionCoordinator = examAcquisitionCoordinator;
 
         ExamCollectionView.SelectionChanged +=
             ExamCollectionView_SelectionChanged;
 
         ExamCollectionView.ItemsSource = _exams;
+    }
+
+    private void ApplyAcquisitionUpdate(ExamAcquisitionUpdate update)
+    {
+        (update.Exam.OfflineStatus, update.Exam.OfflineStatusColor) = update.State switch
+        {
+            ExamAcquisitionState.Checking => ("Checking offline availability…", "#64748B"),
+            ExamAcquisitionState.Downloading => ("Downloading for offline use…", "#1479F5"),
+            ExamAcquisitionState.OfflineReady => ("✓ Available offline", "#047857"),
+            ExamAcquisitionState.Unavailable => ("Online access only", "#92400E"),
+            _ => ("Offline download unavailable — retry when online", "#B91C1C")
+        };
+        if (update.NewlyAvailable)
+            _ = ShowOfflineToastAsync($"✓ {update.Exam.Title} is now available offline");
+        if (update.State == ExamAcquisitionState.Failed && update.Detail is not null)
+            System.Diagnostics.Debug.WriteLine($"Automatic exam download failed: {update.Detail}");
+    }
+
+    private async Task ShowOfflineToastAsync(string message)
+    {
+        await _toastGate.WaitAsync();
+        try
+        {
+            OfflineToastLabel.Text = message;
+            OfflineToast.Opacity = 0;
+            OfflineToast.IsVisible = true;
+            await OfflineToast.FadeToAsync(1, 180);
+            await Task.Delay(2200);
+            await OfflineToast.FadeToAsync(0, 250);
+            OfflineToast.IsVisible = false;
+        }
+        finally { _toastGate.Release(); }
     }
 
     private async void LogoutButton_Clicked(object sender, EventArgs e)
@@ -48,7 +84,7 @@ public partial class ExamListPage : ContentPage
         }
 
         var login = new LoginPage(_databaseService, _authenticationService, _examService,
-            _attemptService, _submissionService);
+            _attemptService, _submissionService, _examAcquisitionCoordinator);
         await Navigation.PushAsync(login);
         foreach (Page page in Navigation.NavigationStack.Where(page => page != login).ToList())
             Navigation.RemovePage(page);
@@ -65,14 +101,6 @@ public partial class ExamListPage : ContentPage
         try
         {
             _exams = await _examService.GetAvailableExamsAsync();
-            try
-            {
-                await _submissionService.SyncPendingAsync();
-            }
-            catch (Exception syncException)
-            {
-                System.Diagnostics.Debug.WriteLine($"Pending sync will retry later: {syncException}");
-            }
         }
         catch (Exception ex)
         {
@@ -83,6 +111,40 @@ public partial class ExamListPage : ContentPage
         }
 
         ExamCollectionView.ItemsSource = _exams;
+        var progress = new Progress<ExamAcquisitionUpdate>(ApplyAcquisitionUpdate);
+        Task acquisition = _examAcquisitionCoordinator.AcquireAvailablePackagesAsync(_exams, progress);
+        Task synchronization = SyncPendingSafelyAsync();
+        await Task.WhenAll(acquisition, synchronization);
+    }
+
+    private async void RefreshView_Refreshing(object sender, EventArgs e)
+    {
+        try
+        {
+            _exams = await _examService.GetAvailableExamsAsync();
+            ExamCollectionView.ItemsSource = _exams;
+            var progress = new Progress<ExamAcquisitionUpdate>(ApplyAcquisitionUpdate);
+            await _examAcquisitionCoordinator.AcquireAvailablePackagesAsync(_exams, progress);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Exam refresh failed: {ex}");
+            await DisplayAlertAsync("Unable to refresh exams",
+                "The latest assigned exams could not be retrieved. Your saved offline list is unchanged.", "OK");
+        }
+        finally
+        {
+            ExamRefreshView.IsRefreshing = false;
+        }
+    }
+
+    private async Task SyncPendingSafelyAsync()
+    {
+        try { await _submissionService.SyncPendingAsync(); }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Pending sync will retry later: {ex}");
+        }
     }
 
     private async void ExamCollectionView_SelectionChanged(

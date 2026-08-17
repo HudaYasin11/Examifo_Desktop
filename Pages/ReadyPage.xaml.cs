@@ -11,6 +11,7 @@ public partial class ReadyPage : ContentPage
     private readonly DatabaseService _databaseService;
     private readonly AttemptService _attemptService;
     private readonly SubmissionService _submissionService;
+    private bool _startInProgress;
 
     public ReadyPage(
         Exam exam,
@@ -37,15 +38,28 @@ public partial class ReadyPage : ContentPage
         object sender,
         EventArgs e)
     {
+        if (_startInProgress) return;
+        _startInProgress = true;
+        StartExamButton.IsEnabled = false;
+        StartExamButton.Text = "Starting…";
         try
         {
-            Attempt attempt = await _attemptService.StartAuthorizedAsync(_exam);
+            Attempt attempt = await _attemptService.GetResumableAttemptAsync(_exam)
+                ?? await _attemptService.StartAsync(_exam);
             await Navigation.PushAsync(new ExamPage(
-                _exam, attempt, _databaseService, _submissionService));
+                _exam, attempt, _databaseService, _submissionService, _attemptService));
         }
         catch (Exception ex)
         {
-            await DisplayAlertAsync("Cannot start exam", ex.Message, "OK");
+            System.Diagnostics.Debug.WriteLine($"Exam start decision failed: {ex}");
+            string explanation = await _attemptService.ExplainOfflineAccessFailureAsync(_exam, ex);
+            await DisplayAlertAsync("Cannot start exam", explanation, "OK");
+        }
+        finally
+        {
+            _startInProgress = false;
+            StartExamButton.IsEnabled = true;
+            StartExamButton.Text = "Start Exam";
         }
     }
 }

@@ -9,6 +9,7 @@ public partial class App : Application
     private readonly Services.ExamService _examService;
     private readonly Services.AttemptService _attemptService;
     private readonly Services.SubmissionService _submissionService;
+    private readonly Services.ExamAcquisitionCoordinator _examAcquisitionCoordinator;
     private readonly Services.SessionRestorationService _sessionRestorationService;
 
     public App(
@@ -17,6 +18,7 @@ public partial class App : Application
         Services.ExamService examService,
         Services.AttemptService attemptService,
         Services.SubmissionService submissionService,
+        Services.ExamAcquisitionCoordinator examAcquisitionCoordinator,
         Services.SessionRestorationService sessionRestorationService)
     {
         InitializeComponent();
@@ -26,15 +28,50 @@ public partial class App : Application
         _examService = examService;
         _attemptService = attemptService;
         _submissionService = submissionService;
+        _examAcquisitionCoordinator = examAcquisitionCoordinator;
         _sessionRestorationService = sessionRestorationService;
     }
 
     protected override Window CreateWindow(
         IActivationState? activationState)
     {
-        return new Window(
+        var window = new Window(
             new NavigationPage(
-                new Pages.StartupPage(_databaseService, _sessionRestorationService,
-                    _authenticationService, _examService, _attemptService, _submissionService)));
+                    new Pages.StartupPage(_databaseService, _sessionRestorationService,
+                    _authenticationService, _examService, _attemptService, _submissionService,
+                    _examAcquisitionCoordinator)))
+        {
+            Width = 820,
+            Height = 720,
+            MinimumWidth = 420,
+            MinimumHeight = 600
+        };
+
+#if WINDOWS
+        window.Created += (_, _) => CenterWindowsWindow(window);
+#endif
+        return window;
     }
+
+#if WINDOWS
+    private static void CenterWindowsWindow(Window window)
+    {
+        if (window.Handler?.PlatformView is not Microsoft.UI.Xaml.Window nativeWindow) return;
+
+        IntPtr handle = WinRT.Interop.WindowNative.GetWindowHandle(nativeWindow);
+        Microsoft.UI.WindowId windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(handle);
+        Microsoft.UI.Windowing.AppWindow appWindow =
+            Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
+        Microsoft.UI.Windowing.DisplayArea displayArea =
+            Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(
+                windowId, Microsoft.UI.Windowing.DisplayAreaFallback.Primary);
+        Windows.Graphics.RectInt32 workArea = displayArea.WorkArea;
+        int width = Math.Min(820, workArea.Width);
+        int height = Math.Min(720, workArea.Height);
+        int x = workArea.X + Math.Max(0, (workArea.Width - width) / 2);
+        int y = workArea.Y + Math.Max(0, (workArea.Height - height) / 2);
+
+        appWindow.MoveAndResize(new Windows.Graphics.RectInt32(x, y, width, height));
+    }
+#endif
 }

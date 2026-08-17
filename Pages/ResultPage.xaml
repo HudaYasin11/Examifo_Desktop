@@ -10,10 +10,10 @@
     <ScrollView>
 
         <VerticalStackLayout
-            Padding="40"
+            Padding="20"
             Spacing="20"
             VerticalOptions="Center"
-            HorizontalOptions="Center"
+            HorizontalOptions="Fill"
             MaximumWidthRequest="700">
 
             <Label
@@ -33,7 +33,7 @@
                 BackgroundColor="White"
                 BorderColor="#E5E7EB"
                 CornerRadius="16"
-                Padding="30"
+                Padding="22"
                 HasShadow="True">
 
                 <VerticalStackLayout Spacing="20">
@@ -52,10 +52,36 @@
                         HorizontalOptions="Center" />
 
                     <Grid
+                        x:Name="ResultStatsGrid"
                         ColumnDefinitions="*,*"
+                        RowDefinitions="Auto,Auto"
                         ColumnSpacing="15">
 
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup Name="WidthStates">
+                                <VisualState Name="Compact">
+                                    <VisualState.StateTriggers><AdaptiveTrigger MinWindowWidth="0" /></VisualState.StateTriggers>
+                                    <VisualState.Setters>
+                                        <Setter TargetName="ScoreCard" Property="Grid.Row" Value="0" />
+                                        <Setter TargetName="ScoreCard" Property="Grid.Column" Value="0" />
+                                        <Setter TargetName="PercentageCard" Property="Grid.Row" Value="1" />
+                                        <Setter TargetName="PercentageCard" Property="Grid.Column" Value="0" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState Name="Wide">
+                                    <VisualState.StateTriggers><AdaptiveTrigger MinWindowWidth="600" /></VisualState.StateTriggers>
+                                    <VisualState.Setters>
+                                        <Setter TargetName="ScoreCard" Property="Grid.Row" Value="0" />
+                                        <Setter TargetName="ScoreCard" Property="Grid.Column" Value="0" />
+                                        <Setter TargetName="PercentageCard" Property="Grid.Row" Value="0" />
+                                        <Setter TargetName="PercentageCard" Property="Grid.Column" Value="1" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+
                         <Frame
+                            x:Name="ScoreCard"
                             Grid.Column="0"
                             BackgroundColor="#F8FAFC"
                             BorderColor="#E2E8F0"
@@ -83,6 +109,7 @@
                         </Frame>
 
                         <Frame
+                            x:Name="PercentageCard"
                             Grid.Column="1"
                             BackgroundColor="#F0FDFA"
                             BorderColor="#99F6E4"

@@ -22,5 +22,7 @@ public class Question
 
     public int DefaultTimeSec { get; set; }
 
+    public string SettingsJson { get; set; } = string.Empty;
+
     public List<QuestionOption> Options { get; set; } = new();
 }

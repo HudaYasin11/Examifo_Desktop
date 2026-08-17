@@ -25,6 +25,7 @@ public static class MauiProgram
 
         builder.Services.AddSingleton<EncryptionService>();
         builder.Services.AddSingleton<ILocalDatabasePathProvider, MauiLocalDatabasePathProvider>();
+        builder.Services.AddSingleton<ILocalPackagePathProvider, MauiLocalPackagePathProvider>();
         builder.Services.AddSingleton<DatabaseService>();
         builder.Services.AddSingleton<OutboxService>();
         builder.Services.AddSingleton(new HttpClient
@@ -59,6 +60,8 @@ public static class MauiProgram
         builder.Services.AddSingleton<DeviceService>();
         builder.Services.AddSingleton<SubmissionApiClient>();
         builder.Services.AddSingleton<ExamService>();
+        builder.Services.AddSingleton<ExamPackageStore>();
+        builder.Services.AddSingleton<ExamAcquisitionCoordinator>();
         builder.Services.AddSingleton<AttemptService>();
         builder.Services.AddSingleton<SubmissionService>();
 
