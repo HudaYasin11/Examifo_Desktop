@@ -5,33 +5,27 @@ namespace Examifo_Desktop.Pages;
 public partial class ResultPage : ContentPage
 {
     private readonly Exam _exam;
-    private readonly int _score;
-    private readonly int _totalQuestions;
+    private readonly Submission _submission;
 
     public ResultPage(
         Exam exam,
-        int score,
-        int totalQuestions)
+        Submission submission)
     {
         InitializeComponent();
 
         _exam = exam;
-        _score = score;
-        _totalQuestions = totalQuestions;
+        if (submission.ResultStatus != "available" || !submission.ScoreObtained.HasValue
+            || !submission.ScoreTotal.HasValue || !submission.Percentage.HasValue
+            || !submission.Passed.HasValue)
+            throw new InvalidOperationException("Only an authoritative released result can be displayed.");
+        _submission = submission;
 
         ExamTitleLabel.Text = exam.Title;
 
-        ScoreLabel.Text =
-            $"{score} / {totalQuestions}";
+        ScoreLabel.Text = $"{submission.ScoreObtained:0.##} / {submission.ScoreTotal:0.##}";
+        PercentageLabel.Text = $"{submission.Percentage:0.##}%";
 
-        double percentage = totalQuestions == 0
-            ? 0
-            : (double)score / totalQuestions * 100;
-
-        PercentageLabel.Text =
-            $"{percentage:0.##}%";
-
-        if (percentage >= 50)
+        if (submission.Passed.Value)
         {
             ResultMessageLabel.Text = "Congratulations! You passed.";
             ResultMessageLabel.TextColor =

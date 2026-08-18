@@ -64,6 +64,12 @@ public static class MauiProgram
         builder.Services.AddSingleton<ExamAcquisitionCoordinator>();
         builder.Services.AddSingleton<AttemptService>();
         builder.Services.AddSingleton<SubmissionService>();
+        builder.Services.AddSingleton<ISubmissionSynchronizer>(serviceProvider =>
+            serviceProvider.GetRequiredService<SubmissionService>());
+        builder.Services.AddSingleton<Microsoft.Maui.Networking.IConnectivity>(
+            Microsoft.Maui.Networking.Connectivity.Current);
+        builder.Services.AddSingleton<INetworkAvailability, MauiNetworkAvailability>();
+        builder.Services.AddSingleton<ForegroundSyncCoordinator>();
 
 #if DEBUG
         builder.Logging.AddDebug();

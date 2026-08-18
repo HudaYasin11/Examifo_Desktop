@@ -11,6 +11,7 @@ public partial class App : Application
     private readonly Services.SubmissionService _submissionService;
     private readonly Services.ExamAcquisitionCoordinator _examAcquisitionCoordinator;
     private readonly Services.SessionRestorationService _sessionRestorationService;
+    private readonly Infrastructure.Sync.ForegroundSyncCoordinator _syncCoordinator;
 
     public App(
         DatabaseService databaseService,
@@ -19,7 +20,8 @@ public partial class App : Application
         Services.AttemptService attemptService,
         Services.SubmissionService submissionService,
         Services.ExamAcquisitionCoordinator examAcquisitionCoordinator,
-        Services.SessionRestorationService sessionRestorationService)
+        Services.SessionRestorationService sessionRestorationService,
+        Infrastructure.Sync.ForegroundSyncCoordinator syncCoordinator)
     {
         InitializeComponent();
 
@@ -30,6 +32,7 @@ public partial class App : Application
         _submissionService = submissionService;
         _examAcquisitionCoordinator = examAcquisitionCoordinator;
         _sessionRestorationService = sessionRestorationService;
+        _syncCoordinator = syncCoordinator;
     }
 
     protected override Window CreateWindow(
@@ -50,6 +53,11 @@ public partial class App : Application
 #if WINDOWS
         window.Created += (_, _) => CenterWindowsWindow(window);
 #endif
+        window.Created += (_, _) => _syncCoordinator.Start();
+        window.Activated += (_, _) => _syncCoordinator.SetForeground(true);
+        window.Resumed += (_, _) => _syncCoordinator.SetForeground(true);
+        window.Stopped += (_, _) => _syncCoordinator.SetForeground(false);
+        window.Destroying += (_, _) => _syncCoordinator.Dispose();
         return window;
     }
 

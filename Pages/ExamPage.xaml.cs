@@ -1225,11 +1225,10 @@ public partial class ExamPage : ContentPage
             try
             {
                 await _submissionService.SyncPendingAsync();
-                submission.Status = "Submitted for grading";
-                await _databaseService.SaveSubmissionAsync(submission);
+                submission = await _databaseService.GetSubmissionAsync(_attempt.Id) ?? submission;
             }
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Submission pending sync: {ex}"); }
-            await Navigation.PushAsync(new SubmissionPage(_exam, _attempt, submission));
+            await Navigation.PushAsync(new SubmissionPage(_exam, _attempt, submission, _submissionService));
         }
         catch (Exception ex)
         {

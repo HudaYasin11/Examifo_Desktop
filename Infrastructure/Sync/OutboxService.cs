@@ -26,4 +26,43 @@ public sealed class OutboxService(Examifo_Desktop.Infrastructure.Persistence.Dat
     public Task<Examifo_Desktop.Infrastructure.Persistence.SyncCheckpointRecord?> GetCheckpointAsync(
         Guid clientId, CancellationToken cancellationToken = default) =>
         databaseService.GetSyncCheckpointAsync(clientId, cancellationToken);
+
+    public Task ApplyPulledChangesAsync(Guid clientId, long nextRevision,
+        IReadOnlyList<PulledSyncChange> changes, DateTime successfulSyncUtc,
+        CancellationToken cancellationToken = default) =>
+        databaseService.ApplyPulledChangesAsync(
+            clientId, nextRevision, changes, successfulSyncUtc, cancellationToken);
+
+    public Task<List<SyncOperation>> GetStaleInFlightAsync(DateTime staleBeforeUtc,
+        CancellationToken cancellationToken = default) =>
+        databaseService.GetStaleInFlightOperationsAsync(staleBeforeUtc, cancellationToken);
+
+    public Task<List<Examifo_Desktop.Domain.Models.Attempt>> GetAttemptsRequiringRecoveryAsync(
+        CancellationToken cancellationToken = default) =>
+        databaseService.GetAttemptsRequiringAuthoritativeRecoveryAsync(cancellationToken);
+
+    public Task ApplyAttemptSummaryAsync(Guid attemptId, string status, long lastAcceptedSequence,
+        int answerCount, bool submitted, long serverRevision,
+        CancellationToken cancellationToken = default) =>
+        databaseService.ApplyAuthoritativeAttemptSummaryAsync(attemptId, status,
+            lastAcceptedSequence, answerCount, submitted, serverRevision, cancellationToken);
+
+    public Task<Examifo_Desktop.Domain.Models.Attempt?> GetAttemptAsync(Guid attemptId,
+        CancellationToken cancellationToken = default) =>
+        databaseService.GetAttemptAsync(attemptId, cancellationToken);
+
+    public Task<Examifo_Desktop.Domain.Models.Submission?> GetSubmissionAsync(Guid attemptId,
+        CancellationToken cancellationToken = default) =>
+        databaseService.GetSubmissionAsync(attemptId, cancellationToken);
+
+    public Task<List<Examifo_Desktop.Domain.Models.Submission>> GetSubmissionsAwaitingResultsAsync(
+        CancellationToken cancellationToken = default) =>
+        databaseService.GetSubmissionsAwaitingResultsAsync(cancellationToken);
+
+    public Task<Examifo_Desktop.Domain.Models.Submission> ApplyResultAsync(Guid attemptId,
+        string resultStatus, decimal? scoreTotal, decimal? scoreObtained, decimal? percentage,
+        bool? passed, DateTime? submittedAtUtc, DateTime updatedAtUtc,
+        CancellationToken cancellationToken = default) =>
+        databaseService.ApplyAuthoritativeResultAsync(attemptId, resultStatus, scoreTotal,
+            scoreObtained, percentage, passed, submittedAtUtc, updatedAtUtc, cancellationToken);
 }

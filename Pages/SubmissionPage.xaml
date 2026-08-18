@@ -87,6 +87,33 @@
                         TextColor="#111827"
                         HorizontalTextAlignment="Center" />
 
+                    <Label
+                        x:Name="ResultExplanationLabel"
+                        FontSize="14"
+                        TextColor="#64748B"
+                        HorizontalTextAlignment="Center" />
+
+                    <Button
+                        x:Name="RefreshResultButton"
+                        Text="Check result status"
+                        TextColor="#1479F5"
+                        BackgroundColor="#EFF6FF"
+                        FontAttributes="Bold"
+                        CornerRadius="8"
+                        HeightRequest="46"
+                        Clicked="RefreshResultButton_Clicked" />
+
+                    <Button
+                        x:Name="ViewResultButton"
+                        Text="View authoritative result"
+                        IsVisible="False"
+                        TextColor="White"
+                        BackgroundColor="#08A6B5"
+                        FontAttributes="Bold"
+                        CornerRadius="8"
+                        HeightRequest="46"
+                        Clicked="ViewResultButton_Clicked" />
+
                     <Button
                         Text="Done"
                         TextColor="White"

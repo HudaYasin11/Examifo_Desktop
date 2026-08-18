@@ -279,6 +279,100 @@ public class DatabaseService
         return await _database.FindAsync<SyncCheckpointRecord>(clientId);
     }
 
+    public async Task ApplyPulledChangesAsync(Guid clientId, long nextRevision,
+        IReadOnlyList<PulledSyncChange> changes, DateTime successfulSyncUtc,
+        CancellationToken cancellationToken = default)
+    {
+        if (clientId == Guid.Empty) throw new ArgumentException("A client ID is required.", nameof(clientId));
+        if (nextRevision < 0) throw new ArgumentOutOfRangeException(nameof(nextRevision));
+        if (successfulSyncUtc == default) throw new ArgumentException("A successful sync time is required.", nameof(successfulSyncUtc));
+        ArgumentNullException.ThrowIfNull(changes);
+        cancellationToken.ThrowIfCancellationRequested();
+        await InitializeAsync(cancellationToken);
+        await _database.RunInTransactionAsync(connection =>
+        {
+            SyncCheckpointRecord checkpoint = connection.Find<SyncCheckpointRecord>(clientId)
+                ?? new SyncCheckpointRecord { ClientId = clientId };
+            long currentRevision = checkpoint.LastServerRevision;
+            if (nextRevision < currentRevision)
+                throw new InvalidDataException("Synchronization pull attempted to move the checkpoint backward.");
+
+            long previousChangeRevision = currentRevision;
+            foreach (PulledSyncChange change in changes)
+            {
+                if (change.Revision <= previousChangeRevision || change.Revision > nextRevision)
+                    throw new InvalidDataException("Synchronization changes are not strictly ordered within the advertised revision.");
+                previousChangeRevision = change.Revision;
+                ApplyPulledChange(connection, change);
+            }
+
+            checkpoint.LastServerRevision = nextRevision;
+            checkpoint.LastSuccessfulSyncUtc = successfulSyncUtc;
+            connection.InsertOrReplace(checkpoint);
+        });
+    }
+
+    private static void ApplyPulledChange(SQLiteConnection connection, PulledSyncChange change)
+    {
+        if (string.IsNullOrWhiteSpace(change.Type) || change.EntityId == Guid.Empty
+            || change.Payload.ValueKind != JsonValueKind.Object
+            || !change.Payload.TryGetProperty("operationId", out JsonElement operationIdElement)
+            || !operationIdElement.TryGetGuid(out Guid operationId) || operationId == Guid.Empty)
+            throw new InvalidDataException("Synchronization change has an invalid operation envelope.");
+
+        string normalizedState = change.Type.ToLowerInvariant() switch
+        {
+            string value when value.EndsWith(".accepted", StringComparison.Ordinal) => OutboxStates.Accepted,
+            string value when value.EndsWith(".duplicate", StringComparison.Ordinal) => OutboxStates.Duplicate,
+            string value when value.EndsWith(".rejected", StringComparison.Ordinal) => OutboxStates.Rejected,
+            string value when value.EndsWith(".retry_later", StringComparison.Ordinal)
+                || value.EndsWith(".retrylater", StringComparison.Ordinal) => OutboxStates.RetryLater,
+            _ => throw new InvalidDataException($"Unsupported synchronization change type '{change.Type}'.")
+        };
+        string? errorCode = change.Payload.TryGetProperty("errorCode", out JsonElement errorElement)
+            && errorElement.ValueKind == JsonValueKind.String ? errorElement.GetString() : null;
+        SyncOperation? operation = connection.Find<SyncOperation>(operationId);
+        if (operation is null)
+        {
+            Attempt? unmatchedAttempt = connection.Find<Attempt>(change.EntityId);
+            if (unmatchedAttempt is not null)
+            {
+                unmatchedAttempt.Status = Domain.Enums.AttemptStatus.NeedsReview;
+                connection.Update(unmatchedAttempt);
+            }
+            return;
+        }
+        if (operation.AttemptId != change.EntityId)
+            throw new InvalidDataException("Synchronization change does not match the local operation attempt.");
+
+        operation.State = normalizedState;
+        operation.ErrorCode = errorCode;
+        operation.ServerRevision = change.Revision;
+        operation.InFlightAtUtc = null;
+        operation.NextAttemptAtUtc = normalizedState == OutboxStates.RetryLater
+            ? DateTime.UtcNow.AddSeconds(5) : null;
+        if (normalizedState == OutboxStates.RetryLater) operation.RetryCount++;
+        connection.Update(operation);
+
+        Attempt? attempt = connection.Find<Attempt>(operation.AttemptId);
+        if (attempt is null) return;
+        if (normalizedState == OutboxStates.Rejected)
+        {
+            attempt.Status = operation.Type == "attempt.submitted"
+                ? Domain.Enums.AttemptStatus.Rejected : Domain.Enums.AttemptStatus.NeedsReview;
+            connection.Update(attempt);
+            return;
+        }
+        if (operation.Type != "attempt.submitted"
+            || normalizedState is not (OutboxStates.Accepted or OutboxStates.Duplicate)) return;
+        bool precedingSucceeded = connection.Table<SyncOperation>()
+            .Where(x => x.AttemptId == operation.AttemptId && x.Sequence < operation.Sequence)
+            .ToList().All(x => x.State is OutboxStates.Accepted or OutboxStates.Duplicate);
+        attempt.Status = precedingSucceeded
+            ? Domain.Enums.AttemptStatus.Synced : Domain.Enums.AttemptStatus.NeedsReview;
+        connection.Update(attempt);
+    }
+
     public async Task RecordProctoringEventWithOperationAsync(Guid attemptId, string eventType,
         DateTime occurredAtUtc, string metadataJson,
         CancellationToken cancellationToken = default)
@@ -648,16 +742,32 @@ public class DatabaseService
         CancellationToken cancellationToken = default)
     {
         if (limit is <= 0 or > 500) throw new ArgumentOutOfRangeException(nameof(limit));
-        await InitializeAsync();
+        await InitializeAsync(cancellationToken);
         var operations = new List<SyncOperation>();
         DateTime now = DateTime.UtcNow;
         await _database.RunInTransactionAsync(connection =>
         {
-            operations = connection.Table<SyncOperation>()
-                .Where(x => x.State == OutboxStates.Pending || x.State == OutboxStates.RetryLater)
-                .ToList()
-                .Where(x => x.NextAttemptAtUtc is null || x.NextAttemptAtUtc <= now)
-                .OrderBy(x => x.AttemptId).ThenBy(x => x.Sequence).Take(limit).ToList();
+            // Claim only a contiguous prefix of unresolved operations for each attempt. A delayed,
+            // in-flight, or rejected operation is a head-of-line barrier: sequence N+1 must never
+            // bypass sequence N, even when N+1 would otherwise be eligible for this batch.
+            List<SyncOperation> all = connection.Table<SyncOperation>().ToList();
+            foreach (IGrouping<Guid, SyncOperation> attemptGroup in all
+                .GroupBy(x => x.AttemptId).OrderBy(x => x.Key))
+            {
+                long expectedSequence = 1;
+                foreach (SyncOperation operation in attemptGroup.OrderBy(x => x.Sequence))
+                {
+                    if (operation.Sequence != expectedSequence) break;
+                    expectedSequence++;
+                    if (operation.State is OutboxStates.Accepted or OutboxStates.Duplicate)
+                        continue;
+                    bool eligible = operation.State is OutboxStates.Pending or OutboxStates.RetryLater
+                        && (operation.NextAttemptAtUtc is null || operation.NextAttemptAtUtc <= now);
+                    if (!eligible || operations.Count >= limit) break;
+                    operations.Add(operation);
+                }
+                if (operations.Count >= limit) break;
+            }
             foreach (SyncOperation operation in operations)
             {
                 operation.State = OutboxStates.InFlight;
@@ -697,6 +807,82 @@ public class DatabaseService
         });
     }
 
+    public async Task<List<SyncOperation>> GetStaleInFlightOperationsAsync(DateTime staleBeforeUtc,
+        CancellationToken cancellationToken = default)
+    {
+        await InitializeAsync(cancellationToken);
+        List<SyncOperation> operations = await _database.Table<SyncOperation>()
+            .Where(x => x.State == OutboxStates.InFlight).ToListAsync();
+        return operations.Where(x => x.InFlightAtUtc is null || x.InFlightAtUtc <= staleBeforeUtc)
+            .OrderBy(x => x.AttemptId).ThenBy(x => x.Sequence).ToList();
+    }
+
+    public async Task<List<Attempt>> GetAttemptsRequiringAuthoritativeRecoveryAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await InitializeAsync(cancellationToken);
+        List<Attempt> attempts = await _database.Table<Attempt>().ToListAsync();
+        return attempts.Where(x => x.Status is Domain.Enums.AttemptStatus.SubmittedLocally
+                or Domain.Enums.AttemptStatus.Syncing or Domain.Enums.AttemptStatus.Rejected
+                or Domain.Enums.AttemptStatus.NeedsReview)
+            .OrderBy(x => x.StartedAtUtc).ToList();
+    }
+
+    public async Task ApplyAuthoritativeAttemptSummaryAsync(Guid attemptId, string status,
+        long lastAcceptedSequence, int answerCount, bool submitted, long serverRevision,
+        CancellationToken cancellationToken = default)
+    {
+        if (attemptId == Guid.Empty || string.IsNullOrWhiteSpace(status))
+            throw new ArgumentException("A valid authoritative attempt summary is required.");
+        if (lastAcceptedSequence < 0 || answerCount < 0 || serverRevision < 0)
+            throw new InvalidDataException("The authoritative attempt summary contains negative values.");
+        await InitializeAsync(cancellationToken);
+        await _database.RunInTransactionAsync(connection =>
+        {
+            Attempt attempt = connection.Find<Attempt>(attemptId)
+                ?? throw new InvalidDataException("The authoritative summary references an unknown local attempt.");
+            List<SyncOperation> operations = connection.Table<SyncOperation>()
+                .Where(x => x.AttemptId == attemptId).OrderBy(x => x.Sequence).ToList();
+            long localHighestSequence = operations.Count == 0 ? 0 : operations[^1].Sequence;
+            if (lastAcceptedSequence > localHighestSequence)
+            {
+                attempt.Status = Domain.Enums.AttemptStatus.NeedsReview;
+                connection.Update(attempt);
+                return;
+            }
+            foreach (SyncOperation operation in operations.Where(x => x.Sequence <= lastAcceptedSequence))
+            {
+                operation.State = OutboxStates.Accepted;
+                operation.ErrorCode = null;
+                operation.InFlightAtUtc = null;
+                operation.NextAttemptAtUtc = null;
+                connection.Update(operation);
+            }
+
+            int localAnswerCount = connection.Table<Answer>().Count(x => x.AttemptId == attemptId);
+            SyncOperation? submission = operations.SingleOrDefault(x => x.Type == "attempt.submitted");
+            bool serverSubmitted = submitted || status.Equals("submitted", StringComparison.OrdinalIgnoreCase);
+            bool submissionAccepted = submission is not null && submission.Sequence <= lastAcceptedSequence;
+            long expectedSequence = 1;
+            bool acceptedPrefixIsComplete = true;
+            foreach (SyncOperation operation in operations.Where(x => x.Sequence <= lastAcceptedSequence))
+            {
+                if (operation.Sequence != expectedSequence++) { acceptedPrefixIsComplete = false; break; }
+            }
+            acceptedPrefixIsComplete &= expectedSequence - 1 == lastAcceptedSequence;
+
+            if (serverSubmitted && submissionAccepted && acceptedPrefixIsComplete
+                && localAnswerCount == answerCount)
+                attempt.Status = Domain.Enums.AttemptStatus.Synced;
+            else if (serverSubmitted || status.Equals("rejected", StringComparison.OrdinalIgnoreCase)
+                || lastAcceptedSequence > 0)
+                attempt.Status = Domain.Enums.AttemptStatus.NeedsReview;
+            else
+                attempt.Status = Domain.Enums.AttemptStatus.SubmittedLocally;
+            connection.Update(attempt);
+        });
+    }
+
     public async Task ReturnOperationsForRetryAsync(IEnumerable<Guid> operationIds, DateTime nextAttemptAtUtc,
         CancellationToken cancellationToken = default)
     {
@@ -721,7 +907,7 @@ public class DatabaseService
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        await InitializeAsync();
+        await InitializeAsync(cancellationToken);
         string normalizedState = state.ToLowerInvariant() switch
         {
             "accepted" => OutboxStates.Accepted,
@@ -743,13 +929,24 @@ public class DatabaseService
                 operation.RetryCount++;
                 operation.NextAttemptAtUtc = DateTime.UtcNow.AddSeconds(5);
             }
+            else
+            {
+                // A terminal server outcome supersedes any schedule created by an earlier
+                // transport failure. Retain RetryCount as history, but clear retry timing.
+                operation.NextAttemptAtUtc = null;
+            }
             connection.Update(operation);
             if (operation.Type != "attempt.submitted") return;
             Attempt? attempt = connection.Find<Attempt>(operation.AttemptId);
             if (attempt is null) return;
+            bool precedingOperationsSucceeded = connection.Table<SyncOperation>()
+                .Where(x => x.AttemptId == operation.AttemptId && x.Sequence < operation.Sequence)
+                .ToList().All(x => x.State is OutboxStates.Accepted or OutboxStates.Duplicate);
             attempt.Status = normalizedState switch
             {
-                OutboxStates.Accepted or OutboxStates.Duplicate => Domain.Enums.AttemptStatus.Synced,
+                OutboxStates.Accepted or OutboxStates.Duplicate when precedingOperationsSucceeded
+                    => Domain.Enums.AttemptStatus.Synced,
+                OutboxStates.Accepted or OutboxStates.Duplicate => Domain.Enums.AttemptStatus.NeedsReview,
                 OutboxStates.Rejected => Domain.Enums.AttemptStatus.Rejected,
                 _ => Domain.Enums.AttemptStatus.SubmittedLocally
             };
@@ -806,9 +1003,9 @@ public class DatabaseService
     }
 
     public async Task<Attempt?> GetAttemptAsync(
-        Guid attemptId)
+        Guid attemptId, CancellationToken cancellationToken = default)
     {
-        await InitializeAsync();
+        await InitializeAsync(cancellationToken);
 
         return await _database.Table<Attempt>()
             .Where(a => a.Id == attemptId)
@@ -868,6 +1065,74 @@ public class DatabaseService
 
         await _database.InsertOrReplaceAsync(
             submission);
+    }
+
+    public async Task<Submission?> GetSubmissionAsync(Guid attemptId,
+        CancellationToken cancellationToken = default)
+    {
+        await InitializeAsync(cancellationToken);
+        return await _database.Table<Submission>().Where(x => x.AttemptId == attemptId).FirstOrDefaultAsync();
+    }
+
+    public async Task<List<Submission>> GetSubmissionsAwaitingResultsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await InitializeAsync(cancellationToken);
+        List<Attempt> synced = await _database.Table<Attempt>()
+            .Where(x => x.Status == Domain.Enums.AttemptStatus.Synced).ToListAsync();
+        HashSet<Guid> syncedIds = synced.Select(x => x.Id).ToHashSet();
+        return (await _database.Table<Submission>().ToListAsync())
+            .Where(x => syncedIds.Contains(x.AttemptId)
+                && x.ResultStatus is "pending_sync" or "grading")
+            .OrderBy(x => x.CreatedAtUtc).ToList();
+    }
+
+    public async Task<Submission> ApplyAuthoritativeResultAsync(Guid attemptId, string resultStatus,
+        decimal? scoreTotal, decimal? scoreObtained, decimal? percentage, bool? passed,
+        DateTime? submittedAtUtc, DateTime updatedAtUtc,
+        CancellationToken cancellationToken = default)
+    {
+        if (attemptId == Guid.Empty || string.IsNullOrWhiteSpace(resultStatus) || updatedAtUtc == default)
+            throw new ArgumentException("A valid authoritative result is required.");
+        string normalized = resultStatus.ToLowerInvariant();
+        if (normalized is not ("grading" or "withheld" or "available"))
+            throw new InvalidDataException($"Unknown authoritative result status '{resultStatus}'.");
+        bool hasScore = scoreTotal.HasValue || scoreObtained.HasValue || percentage.HasValue || passed.HasValue;
+        if (normalized != "available" && (hasScore || submittedAtUtc.HasValue))
+            throw new InvalidDataException("A non-released result must not expose grading values.");
+        if (normalized == "available"
+            && (!scoreTotal.HasValue || !scoreObtained.HasValue || !percentage.HasValue
+                || !passed.HasValue || !submittedAtUtc.HasValue
+                || scoreTotal < 0 || scoreObtained < 0 || scoreObtained > scoreTotal
+                || percentage < 0 || percentage > 100))
+            throw new InvalidDataException("The released result is incomplete or outside valid score bounds.");
+        await InitializeAsync(cancellationToken);
+        Submission? result = null;
+        await _database.RunInTransactionAsync(connection =>
+        {
+            Attempt attempt = connection.Find<Attempt>(attemptId)
+                ?? throw new InvalidDataException("The result references an unknown local attempt.");
+            if (attempt.Status != Domain.Enums.AttemptStatus.Synced)
+                throw new InvalidOperationException("Results cannot be applied before server submission acceptance.");
+            Submission submission = connection.Table<Submission>().FirstOrDefault(x => x.AttemptId == attemptId)
+                ?? throw new InvalidDataException("The result references an attempt without a local submission.");
+            submission.ResultStatus = normalized;
+            submission.Status = normalized switch
+            {
+                "grading" => "Grading in progress",
+                "withheld" => "Result withheld by exam owner",
+                _ => "Result available"
+            };
+            submission.ScoreTotal = normalized == "available" ? scoreTotal : null;
+            submission.ScoreObtained = normalized == "available" ? scoreObtained : null;
+            submission.Percentage = normalized == "available" ? percentage : null;
+            submission.Passed = normalized == "available" ? passed : null;
+            submission.AuthoritativeSubmittedAtUtc = normalized == "available" ? submittedAtUtc : null;
+            submission.ResultUpdatedAtUtc = updatedAtUtc;
+            connection.Update(submission);
+            result = submission;
+        });
+        return result ?? throw new InvalidOperationException("The authoritative result was not persisted.");
     }
 
     public async Task<List<Submission>> GetSubmissionsAsync()

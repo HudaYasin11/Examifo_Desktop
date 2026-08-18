@@ -1,6 +1,7 @@
 using Examifo_Desktop.Domain.Models;
 using Examifo_Desktop.Infrastructure.Persistence;
 using Examifo_Desktop.Infrastructure.Security;
+using Examifo_Desktop.Infrastructure.Sync;
 using Examifo_Desktop.Services;
 using SQLite;
 using System.Text.Json;
@@ -24,6 +25,10 @@ try
     await TestCorruptEncryptionKeyIsNotReplacedAsync();
     await TestDurableIncrementalCatalogueAsync(Path.Combine(testDirectory, "catalogue.db3"));
     await TestDownloadedPackageActivationAsync(Path.Combine(testDirectory, "packages.db3"));
+    await TestStrictOutboxOrderingAsync(Path.Combine(testDirectory, "outbox-ordering.db3"));
+    await TestPulledReconciliationAsync(Path.Combine(testDirectory, "pull-reconciliation.db3"));
+    await TestAuthoritativeAttemptRecoveryAsync(Path.Combine(testDirectory, "attempt-recovery.db3"));
+    await TestAuthoritativeResultsAsync(Path.Combine(testDirectory, "results.db3"));
     Console.WriteLine("All persistence migration tests passed.");
 }
 finally
@@ -53,6 +58,288 @@ static async Task TestFreshDatabaseAsync(string path)
         && await TableExistsAsync(connection, "ExamCatalogueCheckpointRecord"),
         "fresh migration creates the durable exam catalogue cache");
     await connection.CloseAsync();
+}
+
+static async Task TestStrictOutboxOrderingAsync(string path)
+{
+    var secureStore = new MemorySecureValueStore();
+    var encryption = new EncryptionService(secureStore);
+    var service = new DatabaseService(encryption, new TestPathProvider(path));
+    await service.InitializeAsync();
+    string payload = await encryption.EncryptAsync("{}");
+    DateTime now = DateTime.UtcNow;
+    Guid delayedAttempt = Guid.NewGuid();
+    Guid readyAttempt = Guid.NewGuid();
+    Guid rejectedAttempt = Guid.NewGuid();
+    Guid inFlightAttempt = Guid.NewGuid();
+    Guid sequenceGapAttempt = Guid.NewGuid();
+    var connection = new SQLiteAsyncConnection(path);
+    await connection.InsertAllAsync(new[]
+    {
+        Operation(delayedAttempt, 1, OutboxStates.RetryLater, payload, now.AddMinutes(5)),
+        Operation(delayedAttempt, 2, OutboxStates.Pending, payload),
+        Operation(readyAttempt, 1, OutboxStates.Accepted, payload),
+        Operation(readyAttempt, 2, OutboxStates.Pending, payload),
+        Operation(rejectedAttempt, 1, OutboxStates.Rejected, payload),
+        Operation(rejectedAttempt, 2, OutboxStates.Pending, payload),
+        Operation(inFlightAttempt, 1, OutboxStates.InFlight, payload),
+        Operation(inFlightAttempt, 2, OutboxStates.Pending, payload),
+        Operation(sequenceGapAttempt, 2, OutboxStates.Pending, payload)
+    });
+    await connection.CloseAsync();
+
+    List<Examifo_Desktop.Infrastructure.Sync.SyncOperation> claimed =
+        await service.ClaimPendingOperationsAsync();
+    Assert(claimed.Count == 1 && claimed[0].AttemptId == readyAttempt && claimed[0].Sequence == 2,
+        "outbox does not send a later sequence past delayed, rejected, or in-flight head operations");
+    Assert(SyncRetryPolicy.GetDelay(0, 0).TotalSeconds == 1.5
+        && SyncRetryPolicy.GetDelay(50, 1).TotalSeconds <= TimeSpan.FromMinutes(5).TotalSeconds,
+        "sync retry policy applies bounded exponential backoff with jitter");
+
+    static Examifo_Desktop.Infrastructure.Sync.SyncOperation Operation(Guid attemptId, long sequence,
+        string state, string encryptedPayload, DateTime? nextAttemptAtUtc = null) => new()
+    {
+        AttemptId = attemptId,
+        AuthorizationId = Guid.NewGuid(),
+        Sequence = sequence,
+        Type = sequence == 1 ? "attempt.started" : "answer.upserted",
+        OccurredAtUtc = DateTime.UtcNow,
+        PackageVersion = 1,
+        PayloadJson = encryptedPayload,
+        State = state,
+        NextAttemptAtUtc = nextAttemptAtUtc,
+        InFlightAtUtc = state == OutboxStates.InFlight ? DateTime.UtcNow : null
+    };
+}
+
+static async Task TestPulledReconciliationAsync(string path)
+{
+    var encryption = new EncryptionService(new MemorySecureValueStore());
+    var service = new DatabaseService(encryption, new TestPathProvider(path));
+    await service.InitializeAsync();
+    Guid clientId = Guid.NewGuid();
+    var attempt = new Attempt
+    {
+        Id = Guid.NewGuid(), ExamId = Guid.NewGuid(), CandidateId = Guid.NewGuid(),
+        AuthorizationId = Guid.NewGuid(), DeviceId = clientId, PackageVersion = 1,
+        Status = Examifo_Desktop.Domain.Enums.AttemptStatus.SubmittedLocally,
+        StartedAtUtc = DateTime.UtcNow.AddMinutes(-2), DeadlineUtc = DateTime.UtcNow.AddMinutes(8),
+        SubmittedAtUtc = DateTime.UtcNow, NextSequence = 4, LastActivityUtc = DateTime.UtcNow
+    };
+    string payload = await encryption.EncryptAsync("{}");
+    var operations = new[]
+    {
+        Operation(attempt, 1, "attempt.started", payload),
+        Operation(attempt, 2, "answer.upserted", payload),
+        Operation(attempt, 3, "attempt.submitted", payload)
+    };
+    var raw = new SQLiteAsyncConnection(path);
+    await raw.InsertAsync(attempt);
+    await raw.InsertAllAsync(operations);
+    await raw.CloseAsync();
+
+    PulledSyncChange[] accepted = operations.Select((operation, index) => new PulledSyncChange(
+        11 + index, operation.Type + ".accepted", attempt.Id,
+        JsonSerializer.SerializeToElement(new { operationId = operation.OperationId, errorCode = (string?)null })))
+        .ToArray();
+    DateTime synchronizedAt = DateTime.UtcNow;
+    await service.ApplyPulledChangesAsync(clientId, 13, accepted, synchronizedAt);
+
+    raw = new SQLiteAsyncConnection(path);
+    List<Examifo_Desktop.Infrastructure.Sync.SyncOperation> stored =
+        await raw.Table<Examifo_Desktop.Infrastructure.Sync.SyncOperation>().ToListAsync();
+    Attempt reconciled = await raw.FindAsync<Attempt>(attempt.Id)
+        ?? throw new InvalidOperationException("FAIL: reconciled attempt exists");
+    await raw.CloseAsync();
+    SyncCheckpointRecord checkpoint = await service.GetSyncCheckpointAsync(clientId)
+        ?? throw new InvalidOperationException("FAIL: reconciled checkpoint exists");
+    Assert(stored.All(x => x.State == OutboxStates.Accepted && x.ServerRevision is >= 11 and <= 13)
+        && reconciled.Status == Examifo_Desktop.Domain.Enums.AttemptStatus.Synced
+        && checkpoint.LastServerRevision == 13,
+        "ordered pulled acknowledgements reconcile the outbox and advance the checkpoint atomically");
+
+    Guid rollbackAttemptId = Guid.NewGuid();
+    var rollbackAttempt = new Attempt
+    {
+        Id = rollbackAttemptId, ExamId = Guid.NewGuid(), CandidateId = attempt.CandidateId,
+        AuthorizationId = Guid.NewGuid(), DeviceId = clientId, PackageVersion = 1,
+        Status = Examifo_Desktop.Domain.Enums.AttemptStatus.InProgress,
+        StartedAtUtc = DateTime.UtcNow, DeadlineUtc = DateTime.UtcNow.AddMinutes(10),
+        NextSequence = 3, LastActivityUtc = DateTime.UtcNow
+    };
+    var rollbackOperations = new[]
+    {
+        Operation(rollbackAttempt, 1, "attempt.started", payload),
+        Operation(rollbackAttempt, 2, "answer.upserted", payload)
+    };
+    raw = new SQLiteAsyncConnection(path);
+    await raw.InsertAsync(rollbackAttempt);
+    await raw.InsertAllAsync(rollbackOperations);
+    await raw.CloseAsync();
+    var malformedBatch = new[]
+    {
+        Change(14, "attempt.started.accepted", rollbackAttemptId, rollbackOperations[0].OperationId),
+        Change(15, "unsupported.change", rollbackAttemptId, rollbackOperations[1].OperationId)
+    };
+    bool rejected = false;
+    try { await service.ApplyPulledChangesAsync(clientId, 15, malformedBatch, DateTime.UtcNow); }
+    catch (InvalidDataException) { rejected = true; }
+    raw = new SQLiteAsyncConnection(path);
+    var rolledBack = await raw.FindAsync<Examifo_Desktop.Infrastructure.Sync.SyncOperation>(
+        rollbackOperations[0].OperationId);
+    await raw.CloseAsync();
+    checkpoint = await service.GetSyncCheckpointAsync(clientId)
+        ?? throw new InvalidOperationException("FAIL: rollback checkpoint exists");
+    Assert(rejected && rolledBack?.State == OutboxStates.Pending
+        && rolledBack.ServerRevision is null && checkpoint.LastServerRevision == 13,
+        "a malformed pull page rolls back every local change and leaves its checkpoint unchanged");
+
+    static Examifo_Desktop.Infrastructure.Sync.SyncOperation Operation(Attempt owner, long sequence,
+        string type, string encryptedPayload) => new()
+    {
+        AttemptId = owner.Id, AuthorizationId = owner.AuthorizationId, Sequence = sequence,
+        Type = type, OccurredAtUtc = DateTime.UtcNow, PackageVersion = owner.PackageVersion,
+        PayloadJson = encryptedPayload, State = OutboxStates.Pending
+    };
+    static PulledSyncChange Change(long revision, string type, Guid attemptId, Guid operationId) =>
+        new(revision, type, attemptId,
+            JsonSerializer.SerializeToElement(new { operationId, errorCode = (string?)null }));
+}
+
+static async Task TestAuthoritativeAttemptRecoveryAsync(string path)
+{
+    var encryption = new EncryptionService(new MemorySecureValueStore());
+    var service = new DatabaseService(encryption, new TestPathProvider(path));
+    await service.InitializeAsync();
+    Guid attemptId = Guid.NewGuid();
+    Guid authorizationId = Guid.NewGuid();
+    string encrypted = await encryption.EncryptAsync("{}");
+    var attempt = new Attempt
+    {
+        Id = attemptId, ExamId = Guid.NewGuid(), CandidateId = Guid.NewGuid(),
+        AuthorizationId = authorizationId, DeviceId = Guid.NewGuid(), PackageVersion = 1,
+        Status = Examifo_Desktop.Domain.Enums.AttemptStatus.Syncing,
+        StartedAtUtc = DateTime.UtcNow.AddMinutes(-5), DeadlineUtc = DateTime.UtcNow.AddMinutes(5),
+        SubmittedAtUtc = DateTime.UtcNow, NextSequence = 4, LastActivityUtc = DateTime.UtcNow
+    };
+    var operations = new[]
+    {
+        RecoveryOperation(attempt, 1, "attempt.started", encrypted),
+        RecoveryOperation(attempt, 2, "answer.upserted", encrypted),
+        RecoveryOperation(attempt, 3, "attempt.submitted", encrypted)
+    };
+    var answer = new Answer
+    {
+        Id = Guid.NewGuid(), AttemptId = attemptId, QuestionId = Guid.NewGuid(),
+        ExamQuestionId = Guid.NewGuid(), Response = await encryption.EncryptAsync("answer"),
+        AnsweredAtUtc = DateTime.UtcNow, ResponseFormat = "text", Revision = 1
+    };
+    var raw = new SQLiteAsyncConnection(path);
+    await raw.InsertAsync(attempt);
+    await raw.InsertAllAsync(operations);
+    await raw.InsertAsync(answer);
+    await raw.CloseAsync();
+
+    List<Attempt> unresolved = await service.GetAttemptsRequiringAuthoritativeRecoveryAsync();
+    Assert(unresolved.Count == 1 && unresolved[0].Id == attemptId,
+        "submitted and uncertain attempts are selected for authoritative restart recovery");
+    await service.ApplyAuthoritativeAttemptSummaryAsync(
+        attemptId, "submitted", 3, 1, true, 91);
+    raw = new SQLiteAsyncConnection(path);
+    Attempt recovered = await raw.FindAsync<Attempt>(attemptId)
+        ?? throw new InvalidOperationException("FAIL: authoritative recovery attempt exists");
+    List<Examifo_Desktop.Infrastructure.Sync.SyncOperation> recoveredOperations =
+        await raw.Table<Examifo_Desktop.Infrastructure.Sync.SyncOperation>()
+            .Where(x => x.AttemptId == attemptId).ToListAsync();
+    await raw.CloseAsync();
+    Assert(recovered.Status == Examifo_Desktop.Domain.Enums.AttemptStatus.Synced
+        && recoveredOperations.All(x => x.State == OutboxStates.Accepted),
+        "authoritative submitted summary accepts the complete operation prefix and restores Synced state");
+
+    Guid mismatchId = Guid.NewGuid();
+    var mismatch = new Attempt
+    {
+        Id = mismatchId, ExamId = Guid.NewGuid(), CandidateId = attempt.CandidateId,
+        AuthorizationId = Guid.NewGuid(), DeviceId = attempt.DeviceId, PackageVersion = 1,
+        Status = Examifo_Desktop.Domain.Enums.AttemptStatus.SubmittedLocally,
+        StartedAtUtc = DateTime.UtcNow, DeadlineUtc = DateTime.UtcNow.AddMinutes(5),
+        SubmittedAtUtc = DateTime.UtcNow, NextSequence = 3, LastActivityUtc = DateTime.UtcNow
+    };
+    raw = new SQLiteAsyncConnection(path);
+    await raw.InsertAsync(mismatch);
+    await raw.InsertAllAsync(new[]
+    {
+        RecoveryOperation(mismatch, 1, "attempt.started", encrypted),
+        RecoveryOperation(mismatch, 2, "attempt.submitted", encrypted)
+    });
+    await raw.CloseAsync();
+    await service.ApplyAuthoritativeAttemptSummaryAsync(mismatchId, "submitted", 2, 1, true, 92);
+    Assert((await service.GetAttemptAsync(mismatchId))?.Status
+        == Examifo_Desktop.Domain.Enums.AttemptStatus.NeedsReview,
+        "authoritative answer-count mismatch is preserved as NeedsReview instead of falsely reporting Synced");
+
+    static Examifo_Desktop.Infrastructure.Sync.SyncOperation RecoveryOperation(
+        Attempt owner, long sequence, string type, string payload) => new()
+    {
+        AttemptId = owner.Id, AuthorizationId = owner.AuthorizationId, Sequence = sequence,
+        Type = type, OccurredAtUtc = DateTime.UtcNow, PackageVersion = owner.PackageVersion,
+        PayloadJson = payload, State = OutboxStates.InFlight, InFlightAtUtc = DateTime.UtcNow.AddMinutes(-3)
+    };
+}
+
+static async Task TestAuthoritativeResultsAsync(string path)
+{
+    var service = new DatabaseService(new EncryptionService(new MemorySecureValueStore()),
+        new TestPathProvider(path));
+    await service.InitializeAsync();
+    var attempt = new Attempt
+    {
+        Id = Guid.NewGuid(), ExamId = Guid.NewGuid(), CandidateId = Guid.NewGuid(),
+        AuthorizationId = Guid.NewGuid(), DeviceId = Guid.NewGuid(), PackageVersion = 1,
+        Status = Examifo_Desktop.Domain.Enums.AttemptStatus.Synced,
+        StartedAtUtc = DateTime.UtcNow.AddMinutes(-4), DeadlineUtc = DateTime.UtcNow.AddMinutes(6),
+        SubmittedAtUtc = DateTime.UtcNow.AddMinutes(-1), LastActivityUtc = DateTime.UtcNow
+    };
+    var submission = new Submission
+    {
+        AttemptId = attempt.Id, CreatedAtUtc = attempt.SubmittedAtUtc!.Value,
+        Status = "Pending sync / grading", ResultStatus = "pending_sync", TotalQuestions = 10
+    };
+    var raw = new SQLiteAsyncConnection(path);
+    await raw.InsertAsync(attempt);
+    await raw.InsertAsync(submission);
+    await raw.CloseAsync();
+
+    Submission grading = await service.ApplyAuthoritativeResultAsync(attempt.Id, "grading",
+        null, null, null, null, null, DateTime.UtcNow);
+    Assert(grading.ResultStatus == "grading" && grading.ScoreObtained is null
+        && grading.Status == "Grading in progress",
+        "HTTP 202 grading state persists without exposing a guessed score");
+    Submission withheld = await service.ApplyAuthoritativeResultAsync(attempt.Id, "withheld",
+        null, null, null, null, null, DateTime.UtcNow);
+    Assert(withheld.ResultStatus == "withheld" && withheld.ScoreTotal is null,
+        "withheld result persists without leaking unreleased grading values");
+    DateTime authoritativeSubmittedAt = DateTime.UtcNow.AddMinutes(-2);
+    Submission available = await service.ApplyAuthoritativeResultAsync(attempt.Id, "available",
+        100m, 76m, 76m, true, authoritativeSubmittedAt, DateTime.UtcNow);
+    Submission persisted = await service.GetSubmissionAsync(attempt.Id)
+        ?? throw new InvalidOperationException("FAIL: released result persists");
+    Assert(available.ResultStatus == "available" && persisted.ScoreObtained == 76m
+        && persisted.ScoreTotal == 100m && persisted.Percentage == 76m
+        && persisted.Passed == true && persisted.AuthoritativeSubmittedAtUtc == authoritativeSubmittedAt,
+        "released authoritative score, percentage, outcome, and submission time survive restart");
+
+    bool invalidRejected = false;
+    try
+    {
+        await service.ApplyAuthoritativeResultAsync(attempt.Id, "available",
+            100m, 110m, 110m, true, authoritativeSubmittedAt, DateTime.UtcNow);
+    }
+    catch (InvalidDataException) { invalidRejected = true; }
+    Assert(invalidRejected, "invalid authoritative score bounds are rejected without replacing the valid result");
+    Assert(ResultPollingPolicy.GetDelay(0) == TimeSpan.FromSeconds(2)
+        && ResultPollingPolicy.GetDelay(20) == TimeSpan.FromMinutes(2),
+        "grading polling uses the contract backoff schedule and a two-minute cap");
 }
 
 static async Task TestRepeatedAndConcurrentInitializationAsync(string path)
@@ -512,10 +799,19 @@ static async Task TestDurableAttemptLifecycleAsync(string path)
     List<Examifo_Desktop.Infrastructure.Sync.SyncOperation> recovered = await service.ClaimPendingOperationsAsync();
     Assert(recovered.Count == claimed.Count, "stale in-flight operations return safely to pending");
 
-    var terminal = recovered.Single(x => x.Type == "attempt.submitted");
-    await service.ApplySyncResultAsync(terminal.OperationId, "Accepted", null, 12);
+    long revision = 1;
+    foreach (Examifo_Desktop.Infrastructure.Sync.SyncOperation operation in recovered.OrderBy(x => x.Sequence))
+        await service.ApplySyncResultAsync(operation.OperationId, "Accepted", null, revision++);
     Assert((await service.GetAttemptAsync(attempt.Id))?.Status == Examifo_Desktop.Domain.Enums.AttemptStatus.Synced,
-        "accepted terminal operation moves the attempt to synced");
+        "accepted ordered operation chain moves the terminal attempt to synced");
+    var terminalStateDatabase = new SQLiteAsyncConnection(path);
+    List<Examifo_Desktop.Infrastructure.Sync.SyncOperation> terminalOperations =
+        await terminalStateDatabase.Table<Examifo_Desktop.Infrastructure.Sync.SyncOperation>()
+            .Where(x => x.AttemptId == attempt.Id).ToListAsync();
+    Assert(terminalOperations.All(x => x.State == OutboxStates.Accepted
+            && x.NextAttemptAtUtc is null) && terminalOperations.Any(x => x.RetryCount > 0),
+        "terminal sync results clear obsolete retry schedules while retaining retry history");
+    await terminalStateDatabase.CloseAsync();
 
     bool invalidTransitionRejected = false;
     try

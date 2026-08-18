@@ -20,7 +20,7 @@ public sealed class DatabaseMigrationException(int targetVersion, Exception inne
 
 public sealed class DatabaseSchemaMigrator(SQLiteAsyncConnection database)
 {
-    public const int CurrentVersion = 9;
+    public const int CurrentVersion = 11;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private bool _initialized;
 
@@ -242,6 +242,27 @@ public sealed class DatabaseSchemaMigrator(SQLiteAsyncConnection database)
             {
                 Version = 9,
                 Name = "Authoritative exam metadata cache",
+                AppliedAtUtc = DateTime.UtcNow
+            });
+        }),
+        10 => database.RunInTransactionAsync(connection =>
+        {
+            connection.CreateTable<Submission>();
+            connection.Insert(new SchemaMigrationRecord
+            {
+                Version = 10,
+                Name = "Authoritative grading and result state",
+                AppliedAtUtc = DateTime.UtcNow
+            });
+        }),
+        11 => database.RunInTransactionAsync(connection =>
+        {
+            connection.Execute("UPDATE SyncOperation SET NextAttemptAtUtc = NULL " +
+                "WHERE State IN ('Accepted', 'Duplicate', 'Rejected')");
+            connection.Insert(new SchemaMigrationRecord
+            {
+                Version = 11,
+                Name = "Clear obsolete terminal-operation retry schedules",
                 AppliedAtUtc = DateTime.UtcNow
             });
         }),

@@ -24,10 +24,7 @@ public partial class SubmissionStatusPage : ContentPage
         object sender,
         EventArgs e)
     {
-        await Navigation.PushAsync(
-            new ResultPage(
-                _exam,
-                _score,
-                _totalQuestions));
+        await DisplayAlertAsync("Authoritative result required",
+            "Results are displayed only after Examifo returns a released score.", "OK");
     }
 }

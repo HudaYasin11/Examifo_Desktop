@@ -20,3 +20,17 @@ public sealed record SyncOperationRequest(
 public sealed record SyncPushResponse(Guid BatchId, DateTimeOffset ServerTimeUtc, List<SyncItemResult> Results);
 public sealed record SyncItemResult(
     Guid OperationId, string Status, long? ServerRevision, string? ErrorCode, string? Message);
+public sealed record SyncPullResponse(long NextRevision, bool HasMore, List<SyncChangeResponse> Changes);
+public sealed record SyncChangeResponse(long Revision, string Type, Guid EntityId, JsonElement Payload);
+public sealed record SyncOperationStatusResponse(
+    Guid OperationId, string Status, long? ServerRevision, string? ErrorCode, DateTimeOffset ReceivedAtUtc);
+public sealed record AttemptRecoveryResponse(
+    Guid Id, Guid ExamId, int AttemptNumber, string Status,
+    DateTimeOffset StartedAt, DateTimeOffset? SubmittedAt, int? TimeTakenSec,
+    decimal? ScoreTotal, decimal? ScoreObtained, decimal? Percentage, int AnswerCount);
+public sealed record AttemptSyncSummaryResponse(
+    Guid AttemptId, string Status, long LastAcceptedSequence, int AnswerCount,
+    bool Submitted, long ServerRevision);
+public sealed record AttemptResultResponse(
+    string Status, decimal? ScoreTotal, decimal? ScoreObtained, decimal? Percentage,
+    bool? Passed, DateTimeOffset? SubmittedAt);

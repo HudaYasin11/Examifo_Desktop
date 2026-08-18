@@ -12,6 +12,9 @@
     <Compile Include="..\..\Domain\Models\Answer.cs" Link="Answer.cs" />
     <Compile Include="..\..\Domain\Models\Submission.cs" Link="Submission.cs" />
     <Compile Include="..\..\Infrastructure\Sync\SyncOperation.cs" Link="SyncOperation.cs" />
+    <Compile Include="..\..\Infrastructure\Sync\PulledSyncChange.cs" Link="PulledSyncChange.cs" />
+    <Compile Include="..\..\Infrastructure\Sync\SyncRetryPolicy.cs" Link="SyncRetryPolicy.cs" />
+    <Compile Include="..\..\Infrastructure\Sync\ResultPollingPolicy.cs" Link="ResultPollingPolicy.cs" />
     <Compile Include="..\..\Infrastructure\Persistence\LocalPersistenceEntities.cs" Link="LocalPersistenceEntities.cs" />
     <Compile Include="..\..\Infrastructure\Persistence\DatabaseSchemaMigrator.cs" Link="DatabaseSchemaMigrator.cs" />
     <Compile Include="..\..\Infrastructure\Persistence\ILocalDatabasePathProvider.cs" Link="ILocalDatabasePathProvider.cs" />

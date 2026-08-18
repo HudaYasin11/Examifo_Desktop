@@ -18,4 +18,12 @@ public class Submission
     public int Score { get; set; }
 
     public int TotalQuestions { get; set; }
+
+    public string ResultStatus { get; set; } = "pending_sync";
+    public decimal? ScoreTotal { get; set; }
+    public decimal? ScoreObtained { get; set; }
+    public decimal? Percentage { get; set; }
+    public bool? Passed { get; set; }
+    public DateTime? AuthoritativeSubmittedAtUtc { get; set; }
+    public DateTime? ResultUpdatedAtUtc { get; set; }
 }
